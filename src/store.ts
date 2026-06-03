@@ -1,0 +1,165 @@
+import { create } from 'zustand';
+import { Preferences } from '@capacitor/preferences';
+import type { Collection, DeckType, RunConfig, SavedSettings, ManualChoicePayload } from './types';
+
+interface AppState {
+  // Auth
+  token: string;
+  userId: string;
+  isPremium: boolean;
+  setToken: (token: string) => void;
+  setUserId: (id: string) => void;
+  setIsPremium: (val: boolean) => void;
+
+  // Data
+  collections: Collection[];
+  availableDecks: DeckType[];
+  setCollections: (c: Collection[]) => void;
+  setAvailableDecks: (d: DeckType[]) => void;
+
+  // Selection
+  selectedCollectionId: string | number | null;
+  selectedDeckId: number | null;
+  manualDeckId: string;
+  openCount: number;
+  priorityOwnedRule: 1 | 2;
+  sameOrPriorityRule: 1 | 2;
+  allOwnedRule: 1 | 2 | 3;
+  noPriorityRule: 1 | 2;
+  setSelectedCollectionId: (id: string | number | null) => void;
+  setSelectedDeckId: (id: number | null) => void;
+  setManualDeckId: (id: string) => void;
+  setOpenCount: (n: number) => void;
+  setPriorityOwnedRule: (r: 1 | 2) => void;
+  setSameOrPriorityRule: (r: 1 | 2) => void;
+  setAllOwnedRule: (r: 1 | 2 | 3) => void;
+  setNoPriorityRule: (r: 1 | 2) => void;
+
+  // Process
+  logs: string[];
+  isRunning: boolean;
+  stopRequested: boolean;
+  manualChoicePayload: ManualChoicePayload | null;
+  addLog: (text: string) => void;
+  clearLogs: () => void;
+  setIsRunning: (val: boolean) => void;
+  requestStop: () => void;
+  resetStop: () => void;
+  setManualChoicePayload: (p: ManualChoicePayload | null) => void;
+
+  // Persistence
+  saveSettings: () => Promise<void>;
+  loadSettings: () => Promise<void>;
+
+  // Derived
+  buildConfig: () => RunConfig | null;
+}
+
+export const useAppStore = create<AppState>((set, get) => ({
+  token: '',
+  userId: '',
+  isPremium: false,
+  setToken: (token) => set({ token }),
+  setUserId: (userId) => set({ userId }),
+  setIsPremium: (isPremium) => set({ isPremium }),
+
+  collections: [],
+  availableDecks: [],
+  setCollections: (collections) => set({ collections }),
+  setAvailableDecks: (availableDecks) => set({ availableDecks }),
+
+  selectedCollectionId: null,
+  selectedDeckId: null,
+  manualDeckId: '',
+  openCount: 1,
+  priorityOwnedRule: 1,
+  sameOrPriorityRule: 1,
+  allOwnedRule: 1,
+  noPriorityRule: 1,
+  setSelectedCollectionId: (selectedCollectionId) => set({ selectedCollectionId }),
+  setSelectedDeckId: (selectedDeckId) => set({ selectedDeckId }),
+  setManualDeckId: (manualDeckId) => set({ manualDeckId }),
+  setOpenCount: (openCount) => set({ openCount }),
+  setPriorityOwnedRule: (priorityOwnedRule) => set({ priorityOwnedRule }),
+  setSameOrPriorityRule: (sameOrPriorityRule) => set({ sameOrPriorityRule }),
+  setAllOwnedRule: (allOwnedRule) => set({ allOwnedRule }),
+  setNoPriorityRule: (noPriorityRule) => set({ noPriorityRule }),
+
+  logs: [],
+  isRunning: false,
+  stopRequested: false,
+  manualChoicePayload: null,
+  addLog: (text) => set((s) => ({ logs: [...s.logs, text] })),
+  clearLogs: () => set({ logs: [] }),
+  setIsRunning: (isRunning) => set({ isRunning }),
+  requestStop: () => set({ stopRequested: true }),
+  resetStop: () => set({ stopRequested: false }),
+  setManualChoicePayload: (manualChoicePayload) => set({ manualChoicePayload }),
+
+  saveSettings: async () => {
+    const s = get();
+    const data: SavedSettings = {
+      token: s.token,
+      userId: s.userId,
+      isPremium: s.isPremium,
+      deckId: s.selectedDeckId ? String(s.selectedDeckId) : s.manualDeckId,
+      openCount: s.openCount,
+      priorityOwnedRule: s.priorityOwnedRule,
+      sameOrPriorityRule: s.sameOrPriorityRule,
+      allOwnedRule: s.allOwnedRule,
+      noPriorityRule: s.noPriorityRule,
+      collectionId: s.selectedCollectionId,
+    };
+    await Preferences.set({ key: 'settings', value: JSON.stringify(data) });
+  },
+
+  loadSettings: async () => {
+    const result = await Preferences.get({ key: 'settings' });
+    if (!result.value) return;
+    try {
+      const data: SavedSettings = JSON.parse(result.value);
+      set({
+        token: data.token ?? '',
+        userId: data.userId ?? '',
+        isPremium: data.isPremium ?? false,
+        manualDeckId: data.deckId ?? '',
+        openCount: data.openCount ?? 1,
+        priorityOwnedRule: (data.priorityOwnedRule as 1 | 2) ?? 1,
+        sameOrPriorityRule: (data.sameOrPriorityRule as 1 | 2) ?? 1,
+        allOwnedRule: (data.allOwnedRule as 1 | 2 | 3) ?? 1,
+        noPriorityRule: (data.noPriorityRule as 1 | 2) ?? 1,
+        selectedCollectionId: data.collectionId ?? null,
+      });
+    } catch {
+      // ignore
+    }
+  },
+
+  buildConfig: (): RunConfig | null => {
+    const s = get();
+    const token = s.token.trim();
+    const userId = parseInt(s.userId.trim(), 10);
+    if (!token || isNaN(userId)) return null;
+
+    const collection = s.collections.find(
+      (c) => String(c.id) === String(s.selectedCollectionId)
+    );
+    if (!collection) return null;
+
+    const deckId = s.selectedDeckId ?? parseInt(s.manualDeckId.trim(), 10);
+    if (!deckId || isNaN(deckId)) return null;
+
+    return {
+      token,
+      userId,
+      collection,
+      targetDeckId: deckId,
+      openCount: s.openCount,
+      priorityOwnedRule: s.priorityOwnedRule,
+      sameOrPriorityRule: s.sameOrPriorityRule,
+      allOwnedRule: s.allOwnedRule,
+      noPriorityRule: s.noPriorityRule,
+      isPremium: s.isPremium,
+    };
+  },
+}));
