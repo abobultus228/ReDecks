@@ -45,9 +45,8 @@ export interface RunConfig {
   collection: Collection;
   targetDeckId: number;
   openCount: number;
-  priorityOwnedRule: 1 | 2;
+  priorityOwnedRule: 1 | 2 | 3;
   sameOrPriorityRule: 1 | 2;
-  allOwnedRule: 1 | 2 | 3;
   noPriorityRule: 1 | 2;
   isPremium: boolean;
 }
@@ -62,7 +61,6 @@ export interface SavedSettings {
   openCount: number;
   priorityOwnedRule: number;
   sameOrPriorityRule: number;
-  allOwnedRule: number;
   noPriorityRule: number;
   collectionId?: number | string | null;
 }
@@ -87,10 +85,10 @@ export interface ManualChoicePayload {
 // ─── Logic helpers ───────────────────────────────────────────────────────────
 
 export type SelectionReason =
-  | 'priority_new'
-  | 'no_priority_new_any'
-  | 'new_any'
-  | 'priority_duplicate'
-  | 'duplicate_random'
-  | 'priority_owned_non_priority_new'
-  | 'priority_owned_duplicate';
+  | 'priority_new'            // 1 новая приоритетная — авто
+  | 'priority_new_random'     // 2+ новых приоритетных — рандом (правило 2 = авто)
+  | 'priority_owned_non_priority_new' // правило 1=2: взять неприоритетную новую
+  | 'priority_owned_fallback' // правило 1=2: неприоритетных нет, берём owned приоритетную
+  | 'priority_owned_force'    // правило 1=3: всё равно взять приоритетную
+  | 'no_priority_new'         // правило 3=2: нет приоритетных, берём новую
+  | 'no_priority_random';     // правило 3=2: нет ни приоритетных ни новых, рандом

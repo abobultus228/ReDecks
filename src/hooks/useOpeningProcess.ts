@@ -2,6 +2,7 @@ import { useRef, useCallback } from 'react';
 import { useAppStore } from '../store';
 import {
   getOwnedIds,
+  getOwnedIdsForCards,
   getInventoryDecks,
   openDeck,
   chooseCard,
@@ -81,13 +82,15 @@ export function useOpeningProcess() {
           }
 
           const cards = filterCardsForAccount(rawCards, config.isPremium);
+          
+          const openedOwnedIds = await getOwnedIdsForCards(config.token, cards);
 
           log('Выпали карты:');
           cards.forEach((card: Card) => {
             const id = Number(card.id);
             const marks: string[] = [];
             if (priorityIds.has(id)) marks.push('ПРИОРИТЕТ');
-            marks.push(ownedIds.has(id) ? 'УЖЕ ЕСТЬ' : 'НЕТ');
+            marks.push(openedOwnedIds.has(id) ? 'УЖЕ ЕСТЬ' : 'НЕТ');
             log(`  ID ${id}, score=${card.score ?? '?'}, rank=${card.rank ?? '?'} [${marks.join(' | ')}]`);
           });
 
@@ -97,11 +100,10 @@ export function useOpeningProcess() {
             const [selectedCard, reason] = chooseBestCard(
               cards,
               priorityIds,
-              ownedIds,
+              openedOwnedIds,
               config.sameOrPriorityRule,
-              config.allOwnedRule,
               config.noPriorityRule,
-              config.priorityOwnedRule
+              config.priorityOwnedRule,
             );
             selectedId = Number(selectedCard.id);
             log(`${reasonText(reason)} ID: ${selectedId}`);
@@ -118,7 +120,7 @@ export function useOpeningProcess() {
                 const payload: ManualChoicePayload = {
                   cards,
                   priorityIds,
-                  ownedIds,
+                  ownedIds: openedOwnedIds,
                   reason,
                   resolve,
                 };

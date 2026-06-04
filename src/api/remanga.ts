@@ -120,6 +120,11 @@ export async function getOwnedIds(token: string, ids: Set<number>): Promise<Set<
   return owned;
 }
 
+export async function getOwnedIdsForCards(token: string, cards: Card[]): Promise<Set<number>> {
+  const ids = new Set(cards.map((card) => Number(card.id)).filter(Boolean));
+  return getOwnedIds(token, ids);
+}
+
 // ─── Decks ────────────────────────────────────────────────────────────────────
 
 export async function getInventoryDecks(

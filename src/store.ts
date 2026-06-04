@@ -22,17 +22,15 @@ interface AppState {
   selectedDeckId: number | null;
   manualDeckId: string;
   openCount: number;
-  priorityOwnedRule: 1 | 2;
+  priorityOwnedRule: 1 | 2 | 3;
   sameOrPriorityRule: 1 | 2;
-  allOwnedRule: 1 | 2 | 3;
   noPriorityRule: 1 | 2;
   setSelectedCollectionId: (id: string | number | null) => void;
   setSelectedDeckId: (id: number | null) => void;
   setManualDeckId: (id: string) => void;
   setOpenCount: (n: number) => void;
-  setPriorityOwnedRule: (r: 1 | 2) => void;
+  setPriorityOwnedRule: (r: 1 | 2 | 3) => void;
   setSameOrPriorityRule: (r: 1 | 2) => void;
-  setAllOwnedRule: (r: 1 | 2 | 3) => void;
   setNoPriorityRule: (r: 1 | 2) => void;
 
   // Process
@@ -74,7 +72,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   openCount: 1,
   priorityOwnedRule: 1,
   sameOrPriorityRule: 1,
-  allOwnedRule: 1,
   noPriorityRule: 1,
   setSelectedCollectionId: (selectedCollectionId) => set({ selectedCollectionId }),
   setSelectedDeckId: (selectedDeckId) => set({ selectedDeckId }),
@@ -82,7 +79,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   setOpenCount: (openCount) => set({ openCount }),
   setPriorityOwnedRule: (priorityOwnedRule) => set({ priorityOwnedRule }),
   setSameOrPriorityRule: (sameOrPriorityRule) => set({ sameOrPriorityRule }),
-  setAllOwnedRule: (allOwnedRule) => set({ allOwnedRule }),
   setNoPriorityRule: (noPriorityRule) => set({ noPriorityRule }),
 
   logs: [],
@@ -106,7 +102,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       openCount: s.openCount,
       priorityOwnedRule: s.priorityOwnedRule,
       sameOrPriorityRule: s.sameOrPriorityRule,
-      allOwnedRule: s.allOwnedRule,
       noPriorityRule: s.noPriorityRule,
       collectionId: s.selectedCollectionId,
     };
@@ -124,9 +119,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         isPremium: data.isPremium ?? false,
         manualDeckId: data.deckId ?? '',
         openCount: data.openCount ?? 1,
-        priorityOwnedRule: (data.priorityOwnedRule as 1 | 2) ?? 1,
+        priorityOwnedRule: ([1, 2, 3].includes(data.priorityOwnedRule) ? data.priorityOwnedRule : 1) as 1 | 2 | 3,
         sameOrPriorityRule: (data.sameOrPriorityRule as 1 | 2) ?? 1,
-        allOwnedRule: (data.allOwnedRule as 1 | 2 | 3) ?? 1,
         noPriorityRule: (data.noPriorityRule as 1 | 2) ?? 1,
         selectedCollectionId: data.collectionId ?? null,
       });
@@ -157,7 +151,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       openCount: s.openCount,
       priorityOwnedRule: s.priorityOwnedRule,
       sameOrPriorityRule: s.sameOrPriorityRule,
-      allOwnedRule: s.allOwnedRule,
       noPriorityRule: s.noPriorityRule,
       isPremium: s.isPremium,
     };

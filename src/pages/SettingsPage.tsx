@@ -11,21 +11,17 @@ interface Props {
 type RuleOption = { value: number; label: string };
 
 const PRIORITY_OWNED_OPTS: RuleOption[] = [
-  { value: 1, label: 'Выбрать неприоритетную новую' },
-  { value: 2, label: 'Всё равно взять приоритетную' },
+  { value: 1, label: 'Ручной выбор' },
+  { value: 2, label: 'Взять неприоритетную новую, иначе приоритетную' },
+  { value: 3, label: 'Всё равно взять приоритетную' },
 ];
 const SAME_PRIORITY_OPTS: RuleOption[] = [
-  { value: 1, label: 'Остановиться' },
-  { value: 2, label: 'Выбрать случайную' },
-];
-const ALL_OWNED_OPTS: RuleOption[] = [
-  { value: 1, label: 'Остановиться' },
-  { value: 2, label: 'Взять приоритетную повторку' },
-  { value: 3, label: 'Взять случайную повторку' },
+  { value: 1, label: 'Ручной выбор' },
+  { value: 2, label: 'Выбрать случайную приоритетную' },
 ];
 const NO_PRIORITY_OPTS: RuleOption[] = [
-  { value: 1, label: 'Остановиться' },
-  { value: 2, label: 'Выбрать случайную новую' },
+  { value: 1, label: 'Ручной выбор' },
+  { value: 2, label: 'Взять новую неприоритетную, иначе рандом' },
 ];
 
 export default function SettingsPage({ onStart, onLogout }: Props) {
@@ -190,22 +186,16 @@ export default function SettingsPage({ onStart, onLogout }: Props) {
         {/* Rules */}
         <Section title="Правила выбора">
           <RuleRow
-            label="Приоритетные есть, но уже в наличии:"
+            label="Приоритетные выпали, но уже в наличии:"
             opts={PRIORITY_OWNED_OPTS}
             value={store.priorityOwnedRule}
-            onChange={v => store.setPriorityOwnedRule(v as 1 | 2)}
+            onChange={v => store.setPriorityOwnedRule(v as 1 | 2 | 3)}
           />
           <RuleRow
-            label="Несколько приоритетных выпало:"
+            label="Несколько приоритетных одного статуса:"
             opts={SAME_PRIORITY_OPTS}
             value={store.sameOrPriorityRule}
             onChange={v => store.setSameOrPriorityRule(v as 1 | 2)}
-          />
-          <RuleRow
-            label="Все выпавшие уже есть:"
-            opts={ALL_OWNED_OPTS}
-            value={store.allOwnedRule}
-            onChange={v => store.setAllOwnedRule(v as 1 | 2 | 3)}
           />
           <RuleRow
             label="Нет приоритетных среди выпавших:"
