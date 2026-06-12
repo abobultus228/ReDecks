@@ -121,7 +121,7 @@ export default function SettingsPage({ onStart, onLogout }: Props) {
               selectedId={store.selectedCollectionId}
               getLabel={(c: Collection) => {
                 const name = c.name ?? c.title ?? `id=${c.id}`;
-                return c.percent != null ? `${name} — ${c.percent}%` : name;
+                return c.percent != null ? `${name} — ${Math.floor(c.percent)}%` : name;
               }}
               getId={(c: Collection) => c.id}
               onSelect={(id) => store.setSelectedCollectionId(id)}
@@ -337,7 +337,7 @@ function RuleRow({ label, opts, value, onChange }: {
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
-      height: '100dvh',
+      height: '100%',
       minHeight: 0,
       display: 'flex',
       flexDirection: 'column',
@@ -454,7 +454,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   bottomBar: {
     padding: '12px 16px',
-    paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
     background: 'var(--bg)',
     borderTop: '1px solid var(--border)',
     flexShrink: 0,

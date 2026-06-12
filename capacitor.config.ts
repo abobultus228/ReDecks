@@ -23,7 +23,7 @@ const config: CapacitorConfig = {
       group: 'ReDecks',
     },
     StatusBar: {
-      overlaysWebView: false,
+      overlaysWebView: true,
       style: 'DARK',
   },
   },

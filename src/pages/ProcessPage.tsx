@@ -7,6 +7,20 @@ interface Props {
   onBack: () => void;
 }
 
+// ─── Cover helpers (поддержка webm/mp4-анимаций карт) ────────────────────────
+
+/** Достаёт абсолютный URL обложки карты из cover.mid / cover.high. */
+function resolveCoverUrl(cover?: { mid?: string; high?: string }): string | null {
+  const raw = cover?.mid || cover?.high;
+  if (!raw) return null;
+  return raw.startsWith('http') ? raw : `https://remanga.org${raw}`;
+}
+
+/** true, если обложка — видео (анимированная карта), а не картинка. */
+function isVideoUrl(url: string): boolean {
+  return /\.(webm|mp4)(\?|#|$)/i.test(url);
+}
+
 export default function ProcessPage({ onBack }: Props) {
   const store = useAppStore();
   const { run, stop } = useOpeningProcess();
@@ -125,9 +139,7 @@ function ManualChoiceOverlay({ payload }: { payload: ManualChoicePayload }) {
             const isOwned = ownedIds.has(id);
             const selected = selectedCardId === id;
             
-            const imageUrl = card.cover?.mid
-              ? `https://remanga.org${card.cover.mid}`
-              : null;
+            const coverUrl = resolveCoverUrl(card.cover);
 
             return (
               <button
@@ -146,11 +158,22 @@ function ManualChoiceOverlay({ payload }: { payload: ManualChoicePayload }) {
                   </span>
                 </div>
 
-                {imageUrl ? (
-                  <img
-                    src={imageUrl}
-                    style={cardImageStyle.image}
-                  />
+                {coverUrl ? (
+                  isVideoUrl(coverUrl) ? (
+                    <video
+                      src={coverUrl}
+                      style={cardImageStyle.image}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                    />
+                  ) : (
+                    <img
+                      src={coverUrl}
+                      style={cardImageStyle.image}
+                    />
+                  )
                 ) : (
                   <div style={cardImageStyle.noImage}>
                     нет изображения
