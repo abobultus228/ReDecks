@@ -149,17 +149,6 @@ export default function SettingsPage({ onStart, onLogout }: Props) {
               onSelect={(id) => store.setSelectedDeckId(id as number)}
             />
           )}
-          <div style={styles.manualRow}>
-            <span style={styles.manualLabel}>ID вручную</span>
-            <input
-              style={styles.shortInput}
-              type="number"
-              inputMode="numeric"
-              value={store.manualDeckId}
-              onChange={e => store.setManualDeckId(e.target.value)}
-              placeholder="—"
-            />
-          </div>
         </Section>
 
         {/* Count */}
@@ -389,29 +378,6 @@ const styles: Record<string, React.CSSProperties> = {
       flexDirection: 'column',
       gap: '12px',
     },
-  manualRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: '8px',
-  },
-  manualLabel: {
-    fontFamily: 'var(--font-mono)',
-    fontSize: '12px',
-    color: 'var(--text3)',
-  },
-  shortInput: {
-    background: 'var(--bg3)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm)',
-    padding: '8px 12px',
-    color: 'var(--text)',
-    fontFamily: 'var(--font-mono)',
-    fontSize: '13px',
-    outline: 'none',
-    width: '100px',
-    textAlign: 'right',
-  },
   countRow: {
     display: 'flex',
     alignItems: 'center',

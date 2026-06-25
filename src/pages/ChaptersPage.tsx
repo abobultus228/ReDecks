@@ -19,6 +19,7 @@ export default function ChaptersPage() {
   const [viewed, setViewed] = useState<ViewedChapter[]>([]);
   const [resetting, setResetting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [currentSlug, setCurrentSlug] = useState('');
 
   const reset = () => {
     setPhase('pick');
@@ -26,10 +27,12 @@ export default function ChaptersPage() {
     setError('');
     setStatus('');
     setTitleLabel('');
+    setCurrentSlug('');
   };
 
   const handlePick = async (slug: string, label: string) => {
     setBusy(true);
+    setCurrentSlug(slug);
     setTitleLabel(label);
     setError('');
     setPhase('loading');
@@ -149,6 +152,18 @@ export default function ChaptersPage() {
           </button>
         </div>
       )}
+
+      {phase === 'done' && (
+        <div style={p.bottomBar}>
+          <button
+            style={{ ...p.repeatBtn, opacity: busy ? 0.6 : 1 }}
+            onClick={() => { if (currentSlug) handlePick(currentSlug, titleLabel); }}
+            disabled={busy || !currentSlug}
+          >
+            ↻ Повторить для этого тайтла
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -177,7 +192,7 @@ const p: Record<string, React.CSSProperties> = {
   resetBtn: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text3)', background: 'transparent', border: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
   scroll: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' },
   card: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', flexShrink: 0 },
-  cardHeader: { padding: '12px 14px', borderBottom: '1px solid var(--border)' },
+  cardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderBottom: '1px solid var(--border)' },
   cardTitle: { fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.12em' },
   cardBody: { padding: '14px' },
   note: { fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--text3)', lineHeight: 1.6, padding: '0 4px' },
@@ -190,8 +205,8 @@ const p: Record<string, React.CSSProperties> = {
   },
   bigCount: { fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '44px', color: 'var(--text)', textAlign: 'center', lineHeight: 1.1 },
   bigCountLabel: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text3)', textAlign: 'center', marginTop: '4px' },
-  chapterList: { display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '50vh', overflowY: 'auto' },
-  chapterItem: { display: 'flex', flexDirection: 'column', gap: '2px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '9px 12px' },
+  chapterList: { display: 'flex', flexDirection: 'column', gap: '6px' },
+  chapterItem: { display: 'flex', flexDirection: 'column', gap: '2px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '11px 14px' },
   chapterMain: { fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--text)' },
   chapterName: { fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text3)' },
   bottomBar: {
@@ -200,6 +215,12 @@ const p: Record<string, React.CSSProperties> = {
   },
   actionBtn: {
     width: '100%', background: 'var(--red)', color: '#fff', border: 'none',
+    borderRadius: 'var(--radius-sm)', padding: '16px',
+    fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px',
+    cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+  },
+  repeatBtn: {
+    width: '100%', background: 'var(--accent)', color: '#fff', border: 'none',
     borderRadius: 'var(--radius-sm)', padding: '16px',
     fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px',
     cursor: 'pointer', WebkitTapHighlightColor: 'transparent',

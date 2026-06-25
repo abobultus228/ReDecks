@@ -8,6 +8,73 @@ interface Props {
   onAuth: () => void;
 }
 
+/** Повторно раскодирует строку из URL-кодировки (несколько проходов). */
+function decodeDeep(raw: string): string {
+  let cur = raw;
+  for (let i = 0; i < 3; i++) {
+    let dec: string;
+    try { dec = decodeURIComponent(cur); } catch { break; }
+    if (dec === cur) break;
+    cur = dec;
+  }
+  return cur;
+}
+
+/**
+ * Берёт id пользователя из значения cookie/localStorage `user` — это
+ * URL-кодированный JSON. Раскодируем и
+ * парсим; если JSON битый — достаём id регуляркой.
+ */
+function userIdFromValue(value: string): string {
+  const decoded = decodeDeep(value);
+  try {
+    const obj = JSON.parse(decoded);
+    if (obj && obj.id != null) return String(obj.id);
+  } catch {
+    // не JSON — пробуем регуляркой ниже
+  }
+  const m = decoded.match(/"id"\s*:\s*(\d+)/);
+  return m ? m[1] : '';
+}
+
+/** Ищет id пользователя и в cookie, и в localStorage remanga. */
+function findUserId(cookie: string, ls: Record<string, string>): string {
+  // 1. cookie `user`
+  const cm = cookie.match(/(?:^|;\s*)user=([^;]+)/);
+  if (cm) {
+    const id = userIdFromValue(cm[1]);
+    if (id) return id;
+  }
+  // 2. ключи localStorage, похожие на user
+  for (const key of Object.keys(ls)) {
+    if (/user/i.test(key)) {
+      const id = userIdFromValue(ls[key]);
+      if (id) return id;
+    }
+  }
+  // 3. широкий поиск по всему содержимому (и в декодированном, и в кодированном виде)
+  const all = cookie + ' ' + Object.values(ls).join(' ');
+  const decoded = decodeDeep(all).match(/"id"\s*:\s*(\d+)/);
+  if (decoded) return decoded[1];
+  const encoded = all.match(/%22id%22%3A(\d+)/i);
+  return encoded ? encoded[1] : '';
+}
+
+/** Достаёт токен авторизации из cookie, с запасным вариантом из localStorage. */
+function findToken(cookie: string, ls: Record<string, string>): string {
+  const tm = cookie.match(/(?:^|;\s*)token=([^;]+)/);
+  if (tm) {
+    try { return decodeURIComponent(tm[1]); } catch { return tm[1]; }
+  }
+  for (const key of Object.keys(ls)) {
+    if (/^token$|token/i.test(key)) {
+      const v = (ls[key] || '').replace(/^"|"$/g, '');
+      if (v) return v;
+    }
+  }
+  return '';
+}
+
 export default function AuthPage({ onAuth }: Props) {
   const { setToken, setUserId, saveSettings } = useAppStore();
   const [manualToken, setManualToken] = useState('');
@@ -31,25 +98,39 @@ const handleBrowserAuth = async () => {
 
     browser.on('loadstop').subscribe(async () => {
       try {
-        const result = await browser.executeScript({
-          code: 'document.cookie',
-        });
+        // Критичный путь — cookie (простое выражение, работает стабильно)
+        const cookieRes = await browser.executeScript({ code: 'document.cookie' });
+        const cookie = Array.isArray(cookieRes) ? String(cookieRes[0] ?? '') : String(cookieRes ?? '');
 
-        const cookies = Array.isArray(result) ? String(result[0] ?? '') : '';
-        const tokenMatch = cookies.match(/(?:^|;\s*)token=([^;]+)/);
-        const token = tokenMatch ? decodeURIComponent(tokenMatch[1]) : '';
+        // localStorage — отдельным простым выражением, как дополнение
+        let ls: Record<string, string> = {};
+        try {
+          const lsRes = await browser.executeScript({
+            code: 'JSON.stringify(Object.assign({}, window.localStorage))',
+          });
+          const lsStr = Array.isArray(lsRes) ? String(lsRes[0] ?? '') : String(lsRes ?? '');
+          if (lsStr) ls = JSON.parse(lsStr);
+        } catch {
+          ls = {}; // не получилось — не страшно, основное берём из cookie
+        }
 
-        if (!token) return;
+        const token = findToken(cookie, ls);
+        if (!token) return; // ещё не залогинен — ждём следующего loadstop
 
         setToken(token);
-
-        // userId пока оставляем вручную, потому что в твоём API он нужен отдельно
-        setMode('manual');
         setManualToken(token);
 
+        // Автоматически подставляем id пользователя
+        const uid = findUserId(cookie, ls);
+        if (uid) {
+          setUserId(uid);
+          setManualUserId(uid);
+        }
+
+        setMode('manual');
         browser.close();
       } catch {
-        // Пока пользователь не залогинен, token может отсутствовать — это нормально
+        // Пока пользователь не залогинен, токена может не быть — это нормально
       }
     });
   } catch {

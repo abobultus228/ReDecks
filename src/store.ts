@@ -20,14 +20,12 @@ interface AppState {
   // Selection
   selectedCollectionId: string | number | null;
   selectedDeckId: number | null;
-  manualDeckId: string;
   openCount: number;
   priorityOwnedRule: 1 | 2 | 3;
   sameOrPriorityRule: 1 | 2;
   noPriorityRule: 1 | 2;
   setSelectedCollectionId: (id: string | number | null) => void;
   setSelectedDeckId: (id: number | null) => void;
-  setManualDeckId: (id: string) => void;
   setOpenCount: (n: number) => void;
   setPriorityOwnedRule: (r: 1 | 2 | 3) => void;
   setSameOrPriorityRule: (r: 1 | 2) => void;
@@ -68,14 +66,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   selectedCollectionId: null,
   selectedDeckId: null,
-  manualDeckId: '',
   openCount: 1,
   priorityOwnedRule: 1,
   sameOrPriorityRule: 1,
   noPriorityRule: 1,
   setSelectedCollectionId: (selectedCollectionId) => set({ selectedCollectionId }),
   setSelectedDeckId: (selectedDeckId) => set({ selectedDeckId }),
-  setManualDeckId: (manualDeckId) => set({ manualDeckId }),
   setOpenCount: (openCount) => set({ openCount }),
   setPriorityOwnedRule: (priorityOwnedRule) => set({ priorityOwnedRule }),
   setSameOrPriorityRule: (sameOrPriorityRule) => set({ sameOrPriorityRule }),
@@ -98,7 +94,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       token: s.token,
       userId: s.userId,
       isPremium: s.isPremium,
-      deckId: s.selectedDeckId ? String(s.selectedDeckId) : s.manualDeckId,
+      deckId: s.selectedDeckId ? String(s.selectedDeckId) : '',
       openCount: s.openCount,
       priorityOwnedRule: s.priorityOwnedRule,
       sameOrPriorityRule: s.sameOrPriorityRule,
@@ -117,7 +113,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         token: data.token ?? '',
         userId: data.userId ?? '',
         isPremium: data.isPremium ?? false,
-        manualDeckId: data.deckId ?? '',
         openCount: data.openCount ?? 1,
         priorityOwnedRule: ([1, 2, 3].includes(data.priorityOwnedRule) ? data.priorityOwnedRule : 1) as 1 | 2 | 3,
         sameOrPriorityRule: (data.sameOrPriorityRule as 1 | 2) ?? 1,
@@ -140,8 +135,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     if (!collection) return null;
 
-    const deckId = s.selectedDeckId ?? parseInt(s.manualDeckId.trim(), 10);
-    if (!deckId || isNaN(deckId)) return null;
+    const deckId = s.selectedDeckId;
+    if (deckId == null) return null;
 
     return {
       token,

@@ -7,7 +7,22 @@ import {
   getCharacters,
   getCardsTotal,
   CHARACTER_URL,
+  RateLimitError,
 } from '../api/extra';
+
+// Тайминги запроса карт по персонажам
+const REQUEST_DELAY = 400;     // стартовая пауза между запросами, мс
+const MAX_REQUEST_DELAY = 1500;// потолок адаптивной паузы, мс
+const RATE_LIMIT_PAUSE = 3000; // пауза при ошибке 429, мс
+const MAX_RETRIES = 10;        // сколько раз повторять один запрос при 429
+
+// 429 определяем устойчиво: и по классу ошибки, и по тексту — чтобы
+// повтор срабатывал даже если ошибка прилетела другим типом.
+function isRateLimit(e: unknown): boolean {
+  if (e instanceof RateLimitError) return true;
+  const msg = e instanceof Error ? e.message : String(e);
+  return msg.includes('429');
+}
 
 interface CharRow {
   id: number;
@@ -23,6 +38,7 @@ export default function CardsPage() {
   const [titleLabel, setTitleLabel] = useState('');
   const [rows, setRows] = useState<CharRow[]>([]);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [rateLimited, setRateLimited] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -49,6 +65,7 @@ export default function CardsPage() {
     setError('');
     setPhase('loading');
     setRows([]);
+    setRateLimited(false);
     setProgress({ done: 0, total: 0 });
     try {
       const content = await getTitleContent(token, slug);
@@ -62,17 +79,33 @@ export default function CardsPage() {
       setProgress({ done: 0, total: valid.length });
 
       const collected: CharRow[] = [];
+      let delay = REQUEST_DELAY; // адаптивно растёт после каждого 429
+
       for (let i = 0; i < valid.length; i++) {
         const c = valid[i];
         let total = 0;
-        try {
-          total = await getCardsTotal(token, c.id);
-        } catch {
-          total = 0;
+
+        // Повторяем запрос при 429 с паузой; остальные ошибки -> 0 карт
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            total = await getCardsTotal(token, c.id);
+            break;
+          } catch (e) {
+            if (isRateLimit(e) && attempt < MAX_RETRIES) {
+              setRateLimited(true);
+              delay = Math.min(delay + 150, MAX_REQUEST_DELAY); // замедляемся
+              await sleep(RATE_LIMIT_PAUSE);
+              setRateLimited(false);
+              continue; // повторяем того же персонажа
+            }
+            total = 0;
+            break;
+          }
         }
+
         collected.push({ id: c.id, name: c.name || 'Без имени', total });
         setProgress({ done: i + 1, total: valid.length });
-        if (i < valid.length - 1) await sleep(180);
+        if (i < valid.length - 1) await sleep(delay);
       }
 
       collected.sort((a, b) => b.total - a.total);
@@ -134,6 +167,11 @@ export default function CardsPage() {
                 Загружаю карты: {progress.done} / {progress.total}
               </span>
             </div>
+            {rateLimited && (
+              <div style={p.rateLimit}>
+                Лимит запросов (429) — пауза 3 сек, затем продолжу...
+              </div>
+            )}
             <div style={p.progressTrack}>
               <div
                 style={{
@@ -266,6 +304,7 @@ const p: Record<string, React.CSSProperties> = {
     animation: 'redecks-spin 0.7s linear infinite',
   },
   progressTrack: { marginTop: '12px', height: '6px', borderRadius: '3px', background: 'var(--bg3)', overflow: 'hidden' },
+  rateLimit: { marginTop: '10px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--yellow)', background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: 'var(--radius-sm)', padding: '8px 10px' },
   progressFill: { height: '100%', background: 'var(--accent)', transition: 'width 0.2s' },
   filterToggle: {
     fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text3)',

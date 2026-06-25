@@ -43,6 +43,15 @@ export class ExtraApiError extends Error {
   }
 }
 
+/** Ошибка 429 — превышен лимит запросов. Выделена отдельно, чтобы вызывающий
+ *  код мог сделать паузу и повторить запрос. */
+export class RateLimitError extends ExtraApiError {
+  constructor(message = 'Ошибка 429: слишком много запросов.') {
+    super(message);
+    this.name = 'RateLimitError';
+  }
+}
+
 // ─── Общий разбор ответа ─────────────────────────────────────────────────────
 
 function parse<T>(response: { status: number; data: unknown }, action: string): T {
@@ -50,7 +59,7 @@ function parse<T>(response: { status: number; data: unknown }, action: string): 
     throw new ExtraApiError('Ошибка 401: токен недействителен или истёк.');
   }
   if (response.status === 429) {
-    throw new ExtraApiError('Ошибка 429: слишком много запросов. Попробуй позже.');
+    throw new RateLimitError();
   }
   if (response.status >= 400) {
     throw new ExtraApiError(`Ошибка (${action}): HTTP ${response.status}`);
@@ -67,10 +76,19 @@ function parse<T>(response: { status: number; data: unknown }, action: string): 
 }
 
 async function get<T>(token: string, url: string, action: string): Promise<T> {
-  const response = await CapacitorHttp.get({
-    url,
-    headers: makeHeaders(token) as Record<string, string>,
-  });
+  let response;
+  try {
+    response = await CapacitorHttp.get({
+      url,
+      headers: makeHeaders(token) as Record<string, string>,
+    });
+  } catch (e) {
+    // На некоторых платформах CapacitorHttp бросает исключение вместо
+    // возврата статуса — ловим 429 и здесь.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('429')) throw new RateLimitError();
+    throw e;
+  }
   return parse<T>(response, action);
 }
 
