@@ -37,6 +37,18 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    public void onStart() {
+        super.onStart();
+        NotifierPlugin.APP_IN_FOREGROUND = true;
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        NotifierPlugin.APP_IN_FOREGROUND = false;
+    }
+
+    @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {

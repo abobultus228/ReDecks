@@ -28,6 +28,13 @@ public class NotifierPlugin extends Plugin {
     static final String PREFS = "redecks_notify";
     static final String WORK_NAME = "redecks-notify";
 
+    /** true, пока приложение на переднем плане. Ставится из MainActivity
+     *  (onStart/onStop). Worker живёт в том же процессе и читает этот флаг,
+     *  чтобы не уведомлять, когда пользователь в приложении. Если процесс
+     *  холодно поднят самим WorkManager (приложение убито), MainActivity не
+     *  создаётся и флаг остаётся false — что и значит «не в приложении». */
+    public static volatile boolean APP_IN_FOREGROUND = false;
+
     @PluginMethod
     public void setConfig(PluginCall call) {
         Context ctx = getContext();

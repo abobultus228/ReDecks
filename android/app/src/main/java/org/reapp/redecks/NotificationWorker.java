@@ -2,7 +2,9 @@ package org.reapp.redecks;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 
@@ -53,6 +55,10 @@ public class NotificationWorker extends Worker {
         String token = prefs.getString("token", "");
         if (token == null || token.isEmpty()) return Result.success();
 
+        // Уведомляем только когда пользователь НЕ в приложении.
+        // (Заодно не дёргаем сеть зря, пока приложение открыто.)
+        if (NotifierPlugin.APP_IN_FOREGROUND) return Result.success();
+
         boolean vibrate = prefs.getBoolean("vibrate", true);
         Set<String> muted = new HashSet<>(Arrays.asList(prefs.getString("muted", "").split(",")));
 
@@ -98,6 +104,9 @@ public class NotificationWorker extends Worker {
     }
 
     private void showNotification(Context ctx, int id, String roomName, String lastUpdate, boolean vibrate) {
+        // Пользователь мог открыть приложение, пока шёл сетевой запрос.
+        if (NotifierPlugin.APP_IN_FOREGROUND) return;
+
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
         ensureChannels(nm);
@@ -105,10 +114,20 @@ public class NotificationWorker extends Worker {
         String text = roomName + " Новое сообщение " + localTime(lastUpdate);
         String channel = vibrate ? CH_VIBRATE : CH_SILENT;
 
+        // Тап -> открыть приложение (пока без конкретного чата; roomId в extra — задел).
+        Intent launch = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
+        if (launch != null) {
+            launch.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            launch.putExtra("roomId", id);
+        }
+        int piFlags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
+        PendingIntent contentIntent = PendingIntent.getActivity(ctx, id, launch, piFlags);
+
         NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, channel)
                 .setSmallIcon(android.R.drawable.stat_notify_chat)
                 .setContentTitle("ReDecks")
                 .setContentText(text)
+                .setContentIntent(contentIntent)
                 .setAutoCancel(true)
                 .setOnlyAlertOnce(true)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT);
