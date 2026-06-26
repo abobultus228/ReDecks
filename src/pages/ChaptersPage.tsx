@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppStore } from '../store';
 import TitlePicker from '../components/TitlePicker';
+import PageHeader from '../components/PageHeader';
 import {
   getTitleContent,
   collectViewedChapters,
@@ -72,15 +73,13 @@ export default function ChaptersPage() {
 
   return (
     <div style={p.root}>
-      <div style={p.header}>
-        <div>
-          <div style={p.title}>Сброс глав</div>
-          <div style={p.sub}>отметить прочитанное как новое</div>
-        </div>
-        {phase !== 'pick' && (
-          <button style={p.resetBtn} onClick={reset}>другой тайтл</button>
-        )}
-      </div>
+      <PageHeader
+        title="Сброс глав"
+        sub="отметить прочитанное как новое"
+        action={phase !== 'pick'
+          ? <button style={p.resetBtn} onClick={reset}>другой тайтл</button>
+          : undefined}
+      />
 
       <div style={p.scroll}>
         {phase === 'pick' && (

@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useAppStore } from '../store';
 import { getRareCollections, getAvailableDeckTypes } from '../api/remanga';
 import type { Collection, DeckType } from '../types';
+import PageHeader from '../components/PageHeader';
 
 interface Props {
   onStart: () => void;
-  onLogout: () => void;
 }
 
 type RuleOption = { value: number; label: string };
@@ -24,7 +24,7 @@ const NO_PRIORITY_OPTS: RuleOption[] = [
   { value: 2, label: 'Взять новую неприоритетную, иначе рандом' },
 ];
 
-export default function SettingsPage({ onStart, onLogout }: Props) {
+export default function SettingsPage({ onStart }: Props) {
   const store = useAppStore();
   const [loadingCollections, setLoadingCollections] = useState(false);
   const [loadingDecks, setLoadingDecks] = useState(false);
@@ -73,23 +73,9 @@ export default function SettingsPage({ onStart, onLogout }: Props) {
     onStart();
   };
 
-  const handleLogout = () => {
-    store.setToken('');
-    store.setUserId('');
-    store.saveSettings();
-    onLogout();
-  };
-
   return (
     <div style={styles.root}>
-      {/* Header */}
-      <div style={styles.header}>
-        <div>
-          <div style={styles.headerTitle}>ReDecks</div>
-          <div style={styles.headerSub}>настройки</div>
-        </div>
-        <button style={styles.logoutBtn} onClick={handleLogout}>выйти</button>
-      </div>
+      <PageHeader title="Открытие колод" sub="настройки" />
 
       {/* Scrollable content */}
       <div style={styles.scroll}>

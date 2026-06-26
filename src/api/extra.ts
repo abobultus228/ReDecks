@@ -216,3 +216,145 @@ export async function getCardsTotal(token: string, characterId: number): Promise
   );
   return Number(data?.total ?? 0);
 }
+
+// ─── Чат ─────────────────────────────────────────────────────────────────────
+
+export interface ChatRoom {
+  id: number;
+  type: string;
+  name: string;
+  last_read_dt: string | null;
+  last_update_dt: string | null;
+  cover?: { url?: string }[];
+}
+
+export interface ChatMessage {
+  uuid: string;
+  type: string;
+  room_id: number;
+  author_id: number | null;
+  data: { text?: string; attachment?: unknown; id?: number; username?: string };
+  created_at: string;
+  is_deleted: boolean;
+  localUuid?: string; // для сшивки оптимистичного сообщения с эхом сервера
+  pending?: boolean;  // ещё не подтверждено сервером
+}
+
+export interface ChatAvatar {
+  low?: string | null;
+  mid?: string | null;
+  high?: string | null;
+}
+
+export interface ChatMember {
+  id: number;
+  username?: string;
+  avatar?: ChatAvatar;
+}
+
+export interface ChatUser {
+  id: number;
+  username: string;
+  avatarUrl: string;
+}
+
+/** Выбирает url аватара: сначала low, потом mid, потом high. */
+export function pickAvatarUrl(av?: ChatAvatar): string {
+  if (!av) return '';
+  return resolveMediaUrl(av.low || av.mid || av.high || '');
+}
+
+/** Приводит относительный путь медиа remanga к абсолютному URL. */
+export function resolveMediaUrl(url?: string): string {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  if (url.startsWith('/')) return `https://remanga.org${url}`;
+  return `https://remanga.org/media/${url}`;
+}
+
+/** true, если в комнате есть непрочитанные сообщения. */
+export function roomHasUnread(room: ChatRoom): boolean {
+  if (!room.last_update_dt) return false;
+  if (!room.last_read_dt) return true;
+  return room.last_update_dt > room.last_read_dt;
+}
+
+export async function getChatRooms(token: string, name = ''): Promise<ChatRoom[]> {
+  const params = new URLSearchParams({ name });
+  const data = await get<ChatRoom[] | { results?: ChatRoom[] }>(
+    token,
+    `${API_V2}/chat/rooms/?${params}`,
+    'список чатов'
+  );
+  return Array.isArray(data) ? data : (data?.results ?? []);
+}
+
+/**
+ * Сообщения комнаты, новейшие первыми (как отдаёт API).
+ * Для подгрузки истории передай created_at самого старого сообщения в beforeCreatedAt.
+ */
+export async function getChatMessages(
+  token: string,
+  roomId: number,
+  beforeCreatedAt?: string
+): Promise<ChatMessage[]> {
+  const params = new URLSearchParams({ limit: '50', room_id: String(roomId) });
+  if (beforeCreatedAt) params.set('created_at__lt', beforeCreatedAt);
+  const data = await get<{ results?: ChatMessage[] }>(
+    token,
+    `${API_V2}/chat/messages/?${params}`,
+    'сообщения чата'
+  );
+  return data?.results ?? [];
+}
+
+/** Участники комнаты (с аватарами) — берём из детального ответа по комнате. */
+export async function getRoomMembers(token: string, roomId: number): Promise<ChatMember[]> {
+  const data = await get<{ members?: ChatMember[] }>(
+    token,
+    `${API_V2}/chat/rooms/${roomId}/`,
+    'участники чата'
+  );
+  return data?.members ?? [];
+}
+
+/** Профиль пользователя (имя + аватар). Парсим защитно — структура может отличаться. */
+export async function getUserProfile(token: string, userId: number): Promise<ChatUser> {
+  const data = await get<any>(token, `${API_V2}/users/${userId}/`, 'профиль пользователя');
+  const c = (data?.content ?? data) ?? {};
+  const username = c.username ?? c.name ?? '';
+  const av = c.avatar;
+  let avatarUrl = '';
+  if (typeof av === 'string') avatarUrl = resolveMediaUrl(av);
+  else if (av && typeof av === 'object') avatarUrl = resolveMediaUrl(av.url ?? av.mid ?? av.high ?? '');
+  return { id: userId, username, avatarUrl };
+}
+
+// ─── WebSocket чата ──────────────────────────────────────────────────────────
+
+export const CHAT_WS_URL = (token: string) =>
+  `wss://chat.remanga.org/ws/?token=${encodeURIComponent(token)}`;
+
+export interface ChatWsEvent {
+  room_id: number;
+  discriminator?: string;
+  uuid: string;
+  local_uuid?: string | null;
+  text?: string;
+  user_id: number;
+  created_at: string;
+}
+
+/** Приводит входящее WS-событие к виду ChatMessage, как из REST. */
+export function wsEventToMessage(ev: ChatWsEvent): ChatMessage {
+  return {
+    uuid: ev.uuid,
+    type: 'message',
+    room_id: ev.room_id,
+    author_id: ev.user_id,
+    data: { text: ev.text ?? '', attachment: null },
+    created_at: ev.created_at,
+    is_deleted: false,
+    localUuid: ev.local_uuid ?? undefined,
+  };
+}

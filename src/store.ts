@@ -11,6 +11,14 @@ interface AppState {
   setUserId: (id: string) => void;
   setIsPremium: (val: boolean) => void;
 
+  // Notifications
+  notificationsEnabled: boolean;
+  vibrationEnabled: boolean;
+  mutedRoomIds: number[];
+  setNotificationsEnabled: (v: boolean) => void;
+  setVibrationEnabled: (v: boolean) => void;
+  toggleMutedRoom: (roomId: number) => void;
+
   // Data
   collections: Collection[];
   availableDecks: DeckType[];
@@ -59,6 +67,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   setUserId: (userId) => set({ userId }),
   setIsPremium: (isPremium) => set({ isPremium }),
 
+  notificationsEnabled: true,
+  vibrationEnabled: true,
+  mutedRoomIds: [],
+  setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
+  setVibrationEnabled: (vibrationEnabled) => set({ vibrationEnabled }),
+  toggleMutedRoom: (roomId) => set((s) => ({
+    mutedRoomIds: s.mutedRoomIds.includes(roomId)
+      ? s.mutedRoomIds.filter((id) => id !== roomId)
+      : [...s.mutedRoomIds, roomId],
+  })),
+
   collections: [],
   availableDecks: [],
   setCollections: (collections) => set({ collections }),
@@ -100,6 +119,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       sameOrPriorityRule: s.sameOrPriorityRule,
       noPriorityRule: s.noPriorityRule,
       collectionId: s.selectedCollectionId,
+      notificationsEnabled: s.notificationsEnabled,
+      vibrationEnabled: s.vibrationEnabled,
+      mutedRoomIds: s.mutedRoomIds,
     };
     await Preferences.set({ key: 'settings', value: JSON.stringify(data) });
   },
@@ -118,6 +140,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         sameOrPriorityRule: (data.sameOrPriorityRule as 1 | 2) ?? 1,
         noPriorityRule: (data.noPriorityRule as 1 | 2) ?? 1,
         selectedCollectionId: data.collectionId ?? null,
+        notificationsEnabled: data.notificationsEnabled ?? true,
+        vibrationEnabled: data.vibrationEnabled ?? true,
+        mutedRoomIds: Array.isArray(data.mutedRoomIds) ? data.mutedRoomIds : [],
       });
     } catch {
       // ignore

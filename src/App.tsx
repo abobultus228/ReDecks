@@ -6,6 +6,10 @@ import SettingsPage from './pages/SettingsPage';
 import ProcessPage from './pages/ProcessPage';
 import ChaptersPage from './pages/ChaptersPage';
 import CardsPage from './pages/CardsPage';
+import ChatPage from './pages/ChatPage';
+import EventPage from './pages/EventPage';
+import AppSettingsPage from './pages/AppSettingsPage';
+import { syncNotifier } from './utils/notifier';
 import NavBar, { type Tab } from './components/NavBar';
 
 export default function App() {
@@ -15,6 +19,7 @@ export default function App() {
 
   const [tab, setTab] = useState<Tab>('decks');
   const [decksView, setDecksView] = useState<'settings' | 'process'>('settings');
+  const [chatInRoom, setChatInRoom] = useState(false);
 
   // Полноэкранный режим: скрываем шторку уведомлений и панель навигации
   useEffect(() => {
@@ -30,6 +35,11 @@ export default function App() {
     if (!ready) return;
     setAuthed(Boolean(token && userId));
   }, [ready]);
+
+  // Запускаем/обновляем фоновый уведомитель, когда вошли
+  useEffect(() => {
+    if (authed) void syncNotifier();
+  }, [authed]);
 
   if (!ready) {
     return (
@@ -55,16 +65,16 @@ export default function App() {
   return (
     <div style={shell.root}>
       <div style={shell.content}>
+        {tab === 'chat' && <ChatPage onInRoomChange={setChatInRoom} />}
         {tab === 'decks' && (
-          <SettingsPage
-            onStart={() => setDecksView('process')}
-            onLogout={() => { setAuthed(false); }}
-          />
+          <SettingsPage onStart={() => setDecksView('process')} />
         )}
         {tab === 'chapters' && <ChaptersPage />}
+        {tab === 'event' && <EventPage />}
         {tab === 'cards' && <CardsPage />}
+        {tab === 'settings' && <AppSettingsPage onLogout={() => { setAuthed(false); }} />}
       </div>
-      <NavBar active={tab} onChange={setTab} />
+      {!(tab === 'chat' && chatInRoom) && <NavBar active={tab} onChange={setTab} />}
     </div>
   );
 }

@@ -2,32 +2,25 @@ import { useMemo, useState } from 'react';
 import { Browser } from '@capacitor/browser';
 import { useAppStore } from '../store';
 import TitlePicker from '../components/TitlePicker';
+import PageHeader from '../components/PageHeader';
 import {
   getTitleContent,
   getCharacters,
   getCardsTotal,
   CHARACTER_URL,
-  RateLimitError,
 } from '../api/extra';
 
 // Тайминги запроса карт по персонажам
 const REQUEST_DELAY = 400;     // стартовая пауза между запросами, мс
 const MAX_REQUEST_DELAY = 1500;// потолок адаптивной паузы, мс
-const RATE_LIMIT_PAUSE = 3000; // пауза при ошибке 429, мс
-const MAX_RETRIES = 10;        // сколько раз повторять один запрос при 429
-
-// 429 определяем устойчиво: и по классу ошибки, и по тексту — чтобы
-// повтор срабатывал даже если ошибка прилетела другим типом.
-function isRateLimit(e: unknown): boolean {
-  if (e instanceof RateLimitError) return true;
-  const msg = e instanceof Error ? e.message : String(e);
-  return msg.includes('429');
-}
+const RATE_LIMIT_PAUSE = 3000; // пауза после ошибки (в т.ч. 429), мс
+const MAX_RETRIES = 8;         // сколько раз повторять запрос по одному персонажу
 
 interface CharRow {
   id: number;
   name: string;
   total: number;
+  failed?: boolean; // запрос не удался даже после всех повторов
 }
 
 type Phase = 'pick' | 'loading' | 'list';
@@ -59,6 +52,53 @@ export default function CardsPage() {
     setFilterOn(false);
   };
 
+  const recalcBounds = (data: CharRow[]) => {
+    const hi = data.reduce((m, r) => Math.max(m, r.total), 0);
+    setMinVal(0);
+    setMaxVal(hi);
+  };
+
+  /**
+   * Запрашивает количество карт для списка персонажей.
+   * Повтор делается на ЛЮБУЮ ошибку (а не только распознанный 429),
+   * с паузой и адаптивным замедлением. Если после всех повторов запрос
+   * так и не прошёл — персонаж помечается failed (а не молчаливым 0).
+   */
+  const loadFor = async (targets: { id: number; name: string }[]): Promise<CharRow[]> => {
+    const out: CharRow[] = [];
+    let delay = REQUEST_DELAY;
+
+    for (let i = 0; i < targets.length; i++) {
+      const t = targets[i];
+      let total = 0;
+      let failed = false;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          total = await getCardsTotal(token, t.id);
+          failed = false;
+          break;
+        } catch {
+          if (attempt < MAX_RETRIES) {
+            setRateLimited(true);
+            delay = Math.min(delay + 150, MAX_REQUEST_DELAY); // замедляемся
+            await sleep(RATE_LIMIT_PAUSE);
+            setRateLimited(false);
+            continue; // повторяем того же персонажа
+          }
+          total = 0;
+          failed = true;
+        }
+      }
+
+      out.push({ id: t.id, name: t.name, total, failed });
+      setProgress({ done: i + 1, total: targets.length });
+      if (i < targets.length - 1) await sleep(delay);
+    }
+
+    return out;
+  };
+
   const handlePick = async (slug: string, label: string) => {
     setBusy(true);
     setTitleLabel(label);
@@ -70,7 +110,9 @@ export default function CardsPage() {
     try {
       const content = await getTitleContent(token, slug);
       const chars = await getCharacters(token, content);
-      const valid = chars.filter((c) => c.id != null);
+      const valid = chars
+        .filter((c) => c.id != null)
+        .map((c) => ({ id: c.id, name: c.name || 'Без имени' }));
       if (!valid.length) {
         setError('Персонажи не найдены.');
         setPhase('pick');
@@ -78,41 +120,10 @@ export default function CardsPage() {
       }
       setProgress({ done: 0, total: valid.length });
 
-      const collected: CharRow[] = [];
-      let delay = REQUEST_DELAY; // адаптивно растёт после каждого 429
-
-      for (let i = 0; i < valid.length; i++) {
-        const c = valid[i];
-        let total = 0;
-
-        // Повторяем запрос при 429 с паузой; остальные ошибки -> 0 карт
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-          try {
-            total = await getCardsTotal(token, c.id);
-            break;
-          } catch (e) {
-            if (isRateLimit(e) && attempt < MAX_RETRIES) {
-              setRateLimited(true);
-              delay = Math.min(delay + 150, MAX_REQUEST_DELAY); // замедляемся
-              await sleep(RATE_LIMIT_PAUSE);
-              setRateLimited(false);
-              continue; // повторяем того же персонажа
-            }
-            total = 0;
-            break;
-          }
-        }
-
-        collected.push({ id: c.id, name: c.name || 'Без имени', total });
-        setProgress({ done: i + 1, total: valid.length });
-        if (i < valid.length - 1) await sleep(delay);
-      }
-
+      const collected = await loadFor(valid);
       collected.sort((a, b) => b.total - a.total);
       setRows(collected);
-      const hi = collected.reduce((m, r) => Math.max(m, r.total), 0);
-      setMinVal(0);
-      setMaxVal(hi);
+      recalcBounds(collected);
       setPhase('list');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -122,10 +133,32 @@ export default function CardsPage() {
     }
   };
 
+  const retryFailed = async () => {
+    const targets = rows.filter((r) => r.failed).map((r) => ({ id: r.id, name: r.name }));
+    if (!targets.length) return;
+    setBusy(true);
+    setRateLimited(false);
+    setProgress({ done: 0, total: targets.length });
+    setPhase('loading');
+    try {
+      const fixed = await loadFor(targets);
+      const byId = new Map(fixed.map((r) => [r.id, r]));
+      const merged = rows.map((r) => byId.get(r.id) ?? r);
+      merged.sort((a, b) => b.total - a.total);
+      setRows(merged);
+      recalcBounds(merged);
+    } finally {
+      setPhase('list');
+      setBusy(false);
+    }
+  };
+
   const filtered = useMemo(() => {
     if (!filterOn) return rows;
     return rows.filter((r) => r.total >= minVal && r.total <= maxVal);
   }, [rows, filterOn, minVal, maxVal]);
+
+  const failedCount = useMemo(() => rows.filter((r) => r.failed).length, [rows]);
 
   const openLink = (id: number) => { void Browser.open({ url: CHARACTER_URL(id) }); };
 
@@ -135,15 +168,13 @@ export default function CardsPage() {
 
   return (
     <div style={p.root}>
-      <div style={p.header}>
-        <div>
-          <div style={p.title}>Карты персонажей</div>
-          <div style={p.sub}>сколько карт у каждого</div>
-        </div>
-        {phase !== 'pick' && (
-          <button style={p.resetBtn} onClick={reset}>другой тайтл</button>
-        )}
-      </div>
+      <PageHeader
+        title="Персонажи"
+        sub="сколько карт у каждого"
+        action={phase !== 'pick'
+          ? <button style={p.resetBtn} onClick={reset}>другой тайтл</button>
+          : undefined}
+      />
 
       <div style={p.scroll}>
         {phase === 'pick' && (
@@ -169,7 +200,7 @@ export default function CardsPage() {
             </div>
             {rateLimited && (
               <div style={p.rateLimit}>
-                Лимит запросов (429) — пауза 3 сек, затем продолжу...
+                Сервер не ответил (лимит запросов?) — пауза, повторяю...
               </div>
             )}
             <div style={p.progressTrack}>
@@ -185,6 +216,17 @@ export default function CardsPage() {
 
         {phase === 'list' && (
           <>
+            {failedCount > 0 && (
+              <div style={p.failBanner}>
+                <span style={p.failText}>
+                  {failedCount} персонажей не загрузились (ошибка запроса).
+                </span>
+                <button style={p.failBtn} onClick={retryFailed} disabled={busy}>
+                  Повторить ошибки
+                </button>
+              </div>
+            )}
+
             <Card
               title="Фильтр по количеству карт"
               action={
@@ -230,9 +272,13 @@ export default function CardsPage() {
                     <button key={r.id} style={p.charItem} onClick={() => openLink(r.id)}>
                       <div style={p.charLeft}>
                         <span style={p.charName}>{r.name}</span>
-                        <span style={p.charLink}>открыть на remanga ↗</span>
+                        <span style={p.charLink}>
+                          {r.failed ? 'ошибка загрузки' : 'открыть на remanga ↗'}
+                        </span>
                       </div>
-                      <span style={p.charTotal}>{r.total}</span>
+                      <span style={{ ...p.charTotal, color: r.failed ? 'var(--red)' : 'var(--accent)' }}>
+                        {r.failed ? '—' : r.total}
+                      </span>
                     </button>
                   ))
                 )}
@@ -305,6 +351,9 @@ const p: Record<string, React.CSSProperties> = {
   },
   progressTrack: { marginTop: '12px', height: '6px', borderRadius: '3px', background: 'var(--bg3)', overflow: 'hidden' },
   rateLimit: { marginTop: '10px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--yellow)', background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: 'var(--radius-sm)', padding: '8px 10px' },
+  failBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius)', padding: '12px 14px', flexShrink: 0 },
+  failText: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--red)', lineHeight: 1.4 },
+  failBtn: { flexShrink: 0, fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '12px', color: '#fff', background: 'var(--red)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '8px 12px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
   progressFill: { height: '100%', background: 'var(--accent)', transition: 'width 0.2s' },
   filterToggle: {
     fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text3)',

@@ -63,6 +63,9 @@ export interface SavedSettings {
   sameOrPriorityRule: number;
   noPriorityRule: number;
   collectionId?: number | string | null;
+  notificationsEnabled?: boolean;
+  vibrationEnabled?: boolean;
+  mutedRoomIds?: number[];
 }
 
 // ─── Process ─────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 {
   "name": "redecks",
-  "version": "1.1.1",
+  "version": "2.0",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -21,6 +21,7 @@
     "@capacitor/ios": "^6.0.0",
     "@capacitor/preferences": "^6.0.0",
     "@capacitor/status-bar": "^6.0.0",
+    "@capacitor/local-notifications": "^6.0.0",
     "cordova-plugin-inappbrowser": "^6.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
