@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { useAppStore } from '../store';
 import PageHeader from '../components/PageHeader';
@@ -143,7 +143,8 @@ function RoomView({
   const [error, setError] = useState('');
   const [, setAvatarVer] = useState(0);
   const [wsReady, setWsReady] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [text, setText] = useState('');
 
   const avatars = useRef<Map<number, ChatUser>>(new Map());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -296,30 +297,44 @@ function RoomView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.id, token]);
 
-  const send = () => {
-    const ws = socketRef.current;
-    const el = inputRef.current;
-    const text = (el?.value ?? '').trim();
-    if (!text || !wsReady || !ws) return;
+    const send = () => {
+      const ws = socketRef.current;
 
-    const localUuid = genUuid();
-    ws.send(JSON.stringify({ type: 'message', room_id: room.id, text, local_uuid: localUuid }));
+      const value = text.trim();
 
-    // оптимистично показываем своё сообщение сразу
-    const optimistic: ChatMessage = {
-      uuid: localUuid,
-      type: 'message',
-      room_id: room.id,
-      author_id: myId,
-      data: { text },
-      created_at: new Date().toISOString(),
-      is_deleted: false,
-      localUuid,
-      pending: true,
+      if (!value || !wsReady || !ws) return;
+
+      const localUuid = genUuid();
+
+      ws.send(
+        JSON.stringify({
+          type: 'message',
+          room_id: room.id,
+          text: value,
+          local_uuid: localUuid,
+        })
+      );
+
+      const optimistic: ChatMessage = {
+        uuid: localUuid,
+        type: 'message',
+        room_id: room.id,
+        author_id: myId,
+        data: { text: value },
+        created_at: new Date().toISOString(),
+        is_deleted: false,
+        localUuid,
+        pending: true,
+      };
+
+      pushMessage(optimistic, true);
+
+      setText('');
+
+      if (inputRef.current) {
+        inputRef.current.style.height = '44px';
+      }
     };
-    pushMessage(optimistic, true);
-    if (el) el.value = '';
-  };
 
   const onScroll = () => {
     const el = scrollRef.current;
@@ -372,11 +387,24 @@ function RoomView({
       </div>
 
       <div style={s.composer}>
-        <input
+        <textarea
           ref={inputRef}
-          style={s.composerInput}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
           placeholder={wsReady ? 'Сообщение…' : 'Подключение…'}
-          onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+          rows={1}
+          style={s.composerInput}
+          onInput={(e) => {
+            const el = e.currentTarget;
+            el.style.height = '44px';
+            el.style.height = `${el.scrollHeight}px`;
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
           enterKeyHint="send"
           autoCapitalize="sentences"
         />
