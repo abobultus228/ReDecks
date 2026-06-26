@@ -67,3 +67,26 @@ input[type='number']::-webkit-inner-spin-button {
 @keyframes redecks-spin {
   to { transform: rotate(360deg); }
 }
+
+/* Авторесайз textarea без JS — фикс прыжка курсора на Android */
+.chat-input-wrap {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.chat-input-wrap::after {
+  content: attr(data-value) " ";
+  white-space: pre-wrap;
+  visibility: hidden;
+  grid-area: 1 / 1;
+  padding: 10px 14px;
+  font-size: 14px;
+  word-break: break-word;
+  min-height: 44px;
+}
+.chat-input-wrap textarea {
+  grid-area: 1 / 1;
+  resize: none;
+  overflow: hidden;
+  min-height: 44px;
+}

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { useAppStore } from '../store';
 import PageHeader from '../components/PageHeader';
@@ -31,14 +31,70 @@ function genUuid(): string {
 }
 
 /** Время API — московское (UTC+3). Приводим к локальному времени устройства, HH:MM. */
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
+}
+
 function mskToLocalHHMM(src: string): string {
   if (!src) return '';
+
   let iso = src.replace(' ', 'T');
   const dot = iso.indexOf('.');
   if (dot >= 0) iso = iso.slice(0, dot);
+
   const d = new Date(iso + '+03:00');
-  if (isNaN(d.getTime())) return src.slice(11, 16);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (isNaN(d.getTime())) return '';
+
+  const now = new Date();
+
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
+
+  const target = new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate()
+  );
+
+  const days = Math.floor(
+    (today.getTime() - target.getTime()) / 86400000
+  );
+
+  if (days <= 0) {
+    return d.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  if (days === 1) {
+    return 'Вчера';
+  }
+
+  if (days < 7) {
+    return `${days} ${plural(days, 'день', 'дня', 'дней')} назад`;
+  }
+
+  if (days < 30) {
+    const weeks = Math.floor(days / 7);
+    return `${weeks} ${plural(weeks, 'неделю', 'недели', 'недель')} назад`;
+  }
+
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return `${months} ${plural(months, 'месяц', 'месяца', 'месяцев')} назад`;
+  }
+
+  const years = Math.floor(days / 365);
+  return `${years} ${plural(years, 'год', 'года', 'лет')} назад`;
 }
 
 function fmtMsgTime(msg: ChatMessage): string {
@@ -143,8 +199,7 @@ function RoomView({
   const [error, setError] = useState('');
   const [, setAvatarVer] = useState(0);
   const [wsReady, setWsReady] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [text, setText] = useState('');
+  const editableRef = useRef<HTMLDivElement>(null);
 
   const avatars = useRef<Map<number, ChatUser>>(new Map());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -299,21 +354,19 @@ function RoomView({
 
     const send = () => {
       const ws = socketRef.current;
-
-      const value = text.trim();
+      const el = editableRef.current;
+      const value = el?.innerText.trim() ?? '';
 
       if (!value || !wsReady || !ws) return;
 
       const localUuid = genUuid();
 
-      ws.send(
-        JSON.stringify({
-          type: 'message',
-          room_id: room.id,
-          text: value,
-          local_uuid: localUuid,
-        })
-      );
+      ws.send(JSON.stringify({
+        type: 'message',
+        room_id: room.id,
+        text: value,
+        local_uuid: localUuid,
+      }));
 
       const optimistic: ChatMessage = {
         uuid: localUuid,
@@ -329,10 +382,9 @@ function RoomView({
 
       pushMessage(optimistic, true);
 
-      setText('');
-
-      if (inputRef.current) {
-        inputRef.current.style.height = '44px';
+      if (el) {
+        el.innerText = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
       }
     };
 
@@ -386,27 +438,35 @@ function RoomView({
         )}
       </div>
 
+      <style>{`
+        [contenteditable][data-placeholder]:empty::before {
+          content: attr(data-placeholder);
+          color: var(--text3);
+          pointer-events: none;
+        }
+      `}</style>
+
       <div style={s.composer}>
-        <textarea
-          ref={inputRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={wsReady ? 'Сообщение…' : 'Подключение…'}
-          rows={1}
+        <div
+          ref={editableRef}
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-multiline="false"
+          tabIndex={0}
+          data-placeholder={wsReady ? 'Сообщение…' : 'Подключение…'}
           style={s.composerInput}
-          onInput={(e) => {
-            const el = e.currentTarget;
-            el.style.height = '44px';
-            el.style.height = `${el.scrollHeight}px`;
-          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               send();
             }
           }}
-          enterKeyHint="send"
-          autoCapitalize="sentences"
+          onPaste={(e) => {
+            e.preventDefault();
+            const text = e.clipboardData.getData('text/plain');
+            if (text) document.execCommand('insertText', false, text);
+          }}
         />
         <button
           style={{ ...s.sendBtn, ...(wsReady ? s.sendBtnOn : {}) }}
@@ -534,7 +594,7 @@ const s: Record<string, React.CSSProperties> = {
   bubbleTimeMine: { fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'rgba(255,255,255,0.7)', flexShrink: 0 },
 
   composer: { display: 'flex', gap: '8px', padding: '10px 12px', paddingBottom: 'calc(10px + env(safe-area-inset-bottom, 0px))', borderTop: '1px solid var(--border)', background: 'var(--bg)', flexShrink: 0 },
-  composerInput: { flex: 1, minWidth: 0, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '20px', padding: '10px 14px', color: 'var(--text)', fontFamily: 'var(--font-display)', fontSize: '14px', outline: 'none' },
+  composerInput: { flex: 1, minWidth: 0, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '20px', padding: '10px 14px', color: 'var(--text)', fontFamily: 'var(--font-display)', fontSize: '14px', outline: 'none', resize: 'none', minHeight: '44px', maxHeight: '160px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.4, userSelect: 'text' },
   sendBtn: { width: '40px', height: '40px', borderRadius: '50%', border: 'none', background: 'var(--bg3)', color: 'var(--text3)', fontSize: '22px', lineHeight: 1, flexShrink: 0, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
   sendBtnOn: { background: ACCENT, color: '#fff' },
 
