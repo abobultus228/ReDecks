@@ -6,6 +6,9 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import androidx.lifecycle.DefaultLifecycleObserver;
+import androidx.lifecycle.LifecycleOwner;
+import androidx.lifecycle.ProcessLifecycleOwner;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -28,24 +31,18 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NotifierPlugin.class);
         super.onCreate(savedInstanceState);
         hideSystemBars();
+
+        // Надёжное отслеживание foreground всего процесса.
+        ProcessLifecycleOwner.get().getLifecycle().addObserver(new DefaultLifecycleObserver() {
+            @Override public void onStart(LifecycleOwner owner) { NotifierPlugin.APP_IN_FOREGROUND = true; }
+            @Override public void onStop(LifecycleOwner owner)  { NotifierPlugin.APP_IN_FOREGROUND = false; }
+        });
     }
 
     @Override
     public void onResume() {
         super.onResume();
         hideSystemBars();
-    }
-
-    @Override
-    public void onStart() {
-        super.onStart();
-        NotifierPlugin.APP_IN_FOREGROUND = true;
-    }
-
-    @Override
-    public void onStop() {
-        super.onStop();
-        NotifierPlugin.APP_IN_FOREGROUND = false;
     }
 
     @Override
