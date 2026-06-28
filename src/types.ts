@@ -64,8 +64,11 @@ export interface SavedSettings {
   noPriorityRule: number;
   collectionId?: number | string | null;
   notificationsEnabled?: boolean;
+  chatNotificationsEnabled?: boolean;
+  exchangeNotificationsEnabled?: boolean;
   vibrationEnabled?: boolean;
   mutedRoomIds?: number[];
+  onboardingDone?: boolean;
 }
 
 // ─── Process ─────────────────────────────────────────────────────────────────

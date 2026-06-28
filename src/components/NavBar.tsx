@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-export type Tab = 'chat' | 'chapters' | 'decks' | 'event' | 'cards' | 'settings';
+export type Tab = 'chat' | 'chapters' | 'decks' | 'event' | 'cards' | 'exchanges' | 'settings';
 
 interface Props {
   active: Tab;
@@ -10,7 +10,7 @@ interface Props {
 const ROW = 56;  // высота ряда плиток
 const GAP = 8;   // расстояние между плитками
 
-const HIDDEN: Tab[] = ['decks', 'event', 'cards', 'settings']; // что прячется под «Ещё»
+const HIDDEN: Tab[] = ['decks', 'event', 'cards', 'exchanges', 'settings']; // что прячется под «Ещё»
 
 // ─── Иконки ──────────────────────────────────────────────────────────────────
 
@@ -56,6 +56,14 @@ const icons: Record<string, React.ReactNode> = {
       <line x1="18" y1="6" x2="6" y2="18" />
     </svg>
   ),
+  exchanges: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="17 1 21 5 17 9" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <polyline points="7 23 3 19 7 15" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </svg>
+  ),
   settings: (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
@@ -65,11 +73,11 @@ const icons: Record<string, React.ReactNode> = {
 };
 
 function Tile({
-  iconKey, label, on, onClick,
-}: { iconKey: string; label: string; on: boolean; onClick: () => void }) {
+  iconKey, label, on, onClick, span = 1,
+}: { iconKey: string; label: string; on: boolean; onClick: () => void; span?: number }) {
   return (
     <button
-      style={{ ...s.tile, ...(on ? s.tileOn : {}) }}
+      style={{ ...s.tile, gridColumn: span > 1 ? `span ${span}` : undefined, ...(on ? s.tileOn : {}) }}
       onClick={onClick}
     >
       {icons[iconKey]}
@@ -117,9 +125,10 @@ export default function NavBar({ active, onChange }: Props) {
           <Tile iconKey="cards" label="Персонажи" on={active === 'cards'} onClick={() => pick('cards')} />
         </div>
 
-        {/* третий ряд — «Настройки» во всю ширину */}
+        {/* третий ряд — «Настройки» (две плитки, слева) и «Обмены» (справа) */}
         <div style={s.row}>
-          <Tile iconKey="settings" label="Настройки" on={active === 'settings'} onClick={() => pick('settings')} />
+          <Tile iconKey="settings" label="Настройки" on={active === 'settings'} onClick={() => pick('settings')} span={2} />
+          <Tile iconKey="exchanges" label="Обмены" on={active === 'exchanges'} onClick={() => pick('exchanges')} />
         </div>
       </div>
     </>
@@ -153,12 +162,12 @@ const s: Record<string, React.CSSProperties> = {
     willChange: 'transform',
   },
   row: {
-    display: 'flex',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
     gap: `${GAP}px`,
     height: `${ROW}px`,
   },
   tile: {
-    flex: 1,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',

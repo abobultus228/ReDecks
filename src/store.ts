@@ -13,10 +13,16 @@ interface AppState {
 
   // Notifications
   notificationsEnabled: boolean;
+  chatNotificationsEnabled: boolean;
+  exchangeNotificationsEnabled: boolean;
   vibrationEnabled: boolean;
   mutedRoomIds: number[];
+  onboardingDone: boolean;
   setNotificationsEnabled: (v: boolean) => void;
+  setChatNotificationsEnabled: (v: boolean) => void;
+  setExchangeNotificationsEnabled: (v: boolean) => void;
   setVibrationEnabled: (v: boolean) => void;
+  setOnboardingDone: (v: boolean) => void;
   toggleMutedRoom: (roomId: number) => void;
 
   // Data
@@ -68,10 +74,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   setIsPremium: (isPremium) => set({ isPremium }),
 
   notificationsEnabled: true,
+  chatNotificationsEnabled: true,
+  exchangeNotificationsEnabled: true,
   vibrationEnabled: true,
   mutedRoomIds: [],
+  onboardingDone: false,
   setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
+  setChatNotificationsEnabled: (chatNotificationsEnabled) => set({ chatNotificationsEnabled }),
+  setExchangeNotificationsEnabled: (exchangeNotificationsEnabled) => set({ exchangeNotificationsEnabled }),
   setVibrationEnabled: (vibrationEnabled) => set({ vibrationEnabled }),
+  setOnboardingDone: (onboardingDone) => set({ onboardingDone }),
   toggleMutedRoom: (roomId) => set((s) => ({
     mutedRoomIds: s.mutedRoomIds.includes(roomId)
       ? s.mutedRoomIds.filter((id) => id !== roomId)
@@ -120,8 +132,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       noPriorityRule: s.noPriorityRule,
       collectionId: s.selectedCollectionId,
       notificationsEnabled: s.notificationsEnabled,
+      chatNotificationsEnabled: s.chatNotificationsEnabled,
+      exchangeNotificationsEnabled: s.exchangeNotificationsEnabled,
       vibrationEnabled: s.vibrationEnabled,
       mutedRoomIds: s.mutedRoomIds,
+      onboardingDone: s.onboardingDone,
     };
     await Preferences.set({ key: 'settings', value: JSON.stringify(data) });
   },
@@ -141,8 +156,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         noPriorityRule: (data.noPriorityRule as 1 | 2) ?? 1,
         selectedCollectionId: data.collectionId ?? null,
         notificationsEnabled: data.notificationsEnabled ?? true,
+        chatNotificationsEnabled: data.chatNotificationsEnabled ?? true,
+        exchangeNotificationsEnabled: data.exchangeNotificationsEnabled ?? true,
         vibrationEnabled: data.vibrationEnabled ?? true,
         mutedRoomIds: Array.isArray(data.mutedRoomIds) ? data.mutedRoomIds : [],
+        onboardingDone: data.onboardingDone ?? false,
       });
     } catch {
       // ignore

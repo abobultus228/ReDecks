@@ -330,6 +330,114 @@ export async function getUserProfile(token: string, userId: number): Promise<Cha
   return { id: userId, username, avatarUrl };
 }
 
+// ─── Обмены ──────────────────────────────────────────────────────────────────
+
+export type ExchangeStatus = 'accepted' | 'wait' | 'denied' | 'canceled' | string;
+
+export interface ExchangeUser {
+  id: number;
+  username: string;
+  is_premium?: boolean;
+  avatar?: { mid?: string | null; high?: string | null } | null;
+}
+
+export interface ExchangeCardItem {
+  id: number;
+  card: {
+    id: number;
+    cover?: { mid?: string | null; high?: string | null } | null;
+    rank?: string;
+    score?: number;
+    title?: { main_name?: string };
+    character?: { name?: string };
+  };
+}
+
+export interface Exchange {
+  id: number;
+  status: ExchangeStatus;
+  created_at: string;
+  creator: ExchangeUser;
+  partner: ExchangeUser;
+  items_creator: { cards: ExchangeCardItem[] };
+  items_partner: { cards: ExchangeCardItem[] };
+}
+
+export interface ExchangesPageResult {
+  results: Exchange[];
+  hasMore: boolean;
+}
+
+/** Обмены пользователя, новейшие первыми (ordering=-id). Постранично. */
+export async function getExchanges(
+  token: string,
+  userId: number | string,
+  page = 1
+): Promise<ExchangesPageResult> {
+  const params = new URLSearchParams({ ordering: '-id', page: String(page) });
+  const data = await get<{ results?: Exchange[]; next?: string | null }>(
+    token,
+    `${API_V2}/inventory/${userId}/exchanges/?${params}`,
+    `обмены page=${page}`
+  );
+  const results = data?.results ?? [];
+  // hasMore: сервер вернул ссылку next И страница не пустая
+  return { results, hasMore: Boolean(data?.next) && results.length > 0 };
+}
+
+/** Отменяет обмен (доступно отправителю). PUT со статусом canceled. */
+export async function cancelExchange(
+  token: string,
+  userId: number | string,
+  exchangeId: number
+): Promise<void> {
+  const response = await CapacitorHttp.put({
+    url: `${API_V2}/inventory/${userId}/exchanges/${exchangeId}/`,
+    headers: makeHeaders(token, true) as Record<string, string>,
+    data: { status: 'canceled', message_creator: '.' },
+  });
+  if (response.status === 401) {
+    throw new ExtraApiError('Ошибка 401: токен недействителен или истёк.');
+  }
+  if (response.status === 429) {
+    throw new RateLimitError();
+  }
+  if (response.status >= 400) {
+    throw new ExtraApiError(`Не удалось отменить обмен: HTTP ${response.status}`);
+  }
+}
+
+/**
+ * Ответ получателя на обмен: принять или отклонить.
+ * Комментарий необязателен; если задан — уходит в message_partner.
+ */
+export async function respondExchange(
+  token: string,
+  userId: number | string,
+  exchangeId: number,
+  status: 'accepted' | 'denied',
+  message?: string
+): Promise<void> {
+  const data: Record<string, string> = { status };
+  const msg = (message ?? '').trim();
+  if (msg) data.message_partner = msg;
+
+  const response = await CapacitorHttp.put({
+    url: `${API_V2}/inventory/${userId}/exchanges/${exchangeId}/`,
+    headers: makeHeaders(token, true) as Record<string, string>,
+    data,
+  });
+  if (response.status === 401) {
+    throw new ExtraApiError('Ошибка 401: токен недействителен или истёк.');
+  }
+  if (response.status === 429) {
+    throw new RateLimitError();
+  }
+  if (response.status >= 400) {
+    throw new ExtraApiError(`Не удалось обновить обмен: HTTP ${response.status}`);
+  }
+}
+
 // ─── WebSocket чата ──────────────────────────────────────────────────────────
 
 export const CHAT_WS_URL = (token: string) =>

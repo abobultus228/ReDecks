@@ -9,11 +9,14 @@ import CardsPage from './pages/CardsPage';
 import ChatPage from './pages/ChatPage';
 import EventPage from './pages/EventPage';
 import AppSettingsPage from './pages/AppSettingsPage';
-import { syncNotifier } from './utils/notifier';
+import ExchangesPage from './pages/ExchangesPage';
+import OnboardingPage from './pages/OnboardingPage';
+import { syncNotifier, seedExchangeBaseline } from './utils/notifier';
+import { App as CapacitorApp } from '@capacitor/app';
 import NavBar, { type Tab } from './components/NavBar';
 
 export default function App() {
-  const { token, userId, loadSettings } = useAppStore();
+  const { token, userId, loadSettings, onboardingDone } = useAppStore();
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
 
@@ -36,9 +39,17 @@ export default function App() {
     setAuthed(Boolean(token && userId));
   }, [ready]);
 
-  // Запускаем/обновляем фоновый уведомитель, когда вошли
+  // Запускаем/обновляем фоновый уведомитель, когда вошли,
+  // и обновляем базовую линию обменов при входе и при возврате в приложение.
   useEffect(() => {
-    if (authed) void syncNotifier();
+    if (!authed) return;
+    void syncNotifier();
+    void seedExchangeBaseline();
+
+    const sub = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) void seedExchangeBaseline();
+    });
+    return () => { void sub.then((h) => h.remove()); };
   }, [authed]);
 
   if (!ready) {
@@ -57,6 +68,11 @@ export default function App() {
     return <AuthPage onAuth={() => { setAuthed(true); setTab('decks'); setDecksView('settings'); }} />;
   }
 
+  // Начальная настройка уведомлений — один раз после входа
+  if (!onboardingDone) {
+    return <OnboardingPage onDone={() => { /* флаг уже сохранён в сторе */ }} />;
+  }
+
   // Процесс открытия — на весь экран, без нижней навигации
   if (tab === 'decks' && decksView === 'process') {
     return <ProcessPage onBack={() => setDecksView('settings')} />;
@@ -72,6 +88,7 @@ export default function App() {
         {tab === 'chapters' && <ChaptersPage />}
         {tab === 'event' && <EventPage />}
         {tab === 'cards' && <CardsPage />}
+        {tab === 'exchanges' && <ExchangesPage />}
         {tab === 'settings' && <AppSettingsPage onLogout={() => { setAuthed(false); }} />}
       </div>
       {!(tab === 'chat' && chatInRoom) && <NavBar active={tab} onChange={setTab} />}

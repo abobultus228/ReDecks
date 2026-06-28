@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAppStore } from '../store';
 import PageHeader from '../components/PageHeader';
-import { requestNotifPermission, syncNotifier } from '../utils/notifier';
+import { requestNotifPermission, syncNotifier, seedExchangeBaseline } from '../utils/notifier';
 
 interface Props {
   onLogout: () => void;
@@ -11,11 +11,25 @@ export default function AppSettingsPage({ onLogout }: Props) {
   const store = useAppStore();
   const [confirmLogout, setConfirmLogout] = useState(false);
 
-  const toggleNotifications = async (v: boolean) => {
+  const toggleMaster = async (v: boolean) => {
     store.setNotificationsEnabled(v);
-    if (v) await requestNotifPermission();
+    if (v) await requestNotifPermission(); // спрашиваем право на устройстве
     await store.saveSettings();
     await syncNotifier();
+    if (v) await seedExchangeBaseline();
+  };
+
+  const toggleChat = async (v: boolean) => {
+    store.setChatNotificationsEnabled(v);
+    await store.saveSettings();
+    await syncNotifier();
+  };
+
+  const toggleExchanges = async (v: boolean) => {
+    store.setExchangeNotificationsEnabled(v);
+    await store.saveSettings();
+    await syncNotifier();
+    if (v) await seedExchangeBaseline();
   };
 
   const toggleVibration = async (v: boolean) => {
@@ -42,10 +56,28 @@ export default function AppSettingsPage({ onLogout }: Props) {
           <div style={p.cardHeader}><span style={p.cardTitle}>Уведомления</span></div>
           <div style={p.cardBody}>
             <Toggle
-              label="Уведомления о сообщениях"
+              label="Уведомления"
               checked={store.notificationsEnabled}
-              onChange={toggleNotifications}
+              onChange={toggleMaster}
             />
+
+            <div style={p.childGroup}>
+              <Toggle
+                label="Чат"
+                checked={store.chatNotificationsEnabled}
+                disabled={!store.notificationsEnabled}
+                onChange={toggleChat}
+                child
+              />
+              <Toggle
+                label="Обмены"
+                checked={store.exchangeNotificationsEnabled}
+                disabled={!store.notificationsEnabled}
+                onChange={toggleExchanges}
+                child
+              />
+            </div>
+
             <div style={p.divider} />
             <Toggle
               label="Вибрация"
@@ -54,8 +86,9 @@ export default function AppSettingsPage({ onLogout }: Props) {
               onChange={toggleVibration}
             />
             <p style={p.hint}>
-              Приложение проверяет новые сообщения в фоне примерно раз в 15 минут
-              и показывает уведомление. Звука нет.
+              В фоне примерно раз в 15 минут приложение проверяет новые сообщения
+              в чате и новые входящие обмены и показывает уведомление. Уведомления
+              приходят, только когда приложение закрыто.
             </p>
           </div>
         </div>
@@ -82,14 +115,14 @@ export default function AppSettingsPage({ onLogout }: Props) {
 }
 
 function Toggle({
-  label, checked, onChange, disabled,
-}: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  label, checked, onChange, disabled, child,
+}: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; child?: boolean }) {
   return (
     <div
-      style={{ ...p.toggleRow, opacity: disabled ? 0.45 : 1 }}
+      style={{ ...p.toggleRow, ...(child ? p.toggleRowChild : {}), opacity: disabled ? 0.45 : 1 }}
       onClick={() => { if (!disabled) onChange(!checked); }}
     >
-      <span style={p.toggleLabel}>{label}</span>
+      <span style={child ? p.toggleLabelChild : p.toggleLabel}>{label}</span>
       <div style={{ ...p.track, background: checked ? 'var(--accent)' : 'var(--bg3)' }}>
         <div style={{ ...p.thumb, transform: checked ? 'translateX(18px)' : 'translateX(2px)' }} />
       </div>
@@ -108,7 +141,14 @@ const p: Record<string, React.CSSProperties> = {
   hint: { fontFamily: 'var(--font-display)', fontSize: '12px', color: 'var(--text3)', lineHeight: 1.5, marginTop: '10px' },
 
   toggleRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
+  toggleRowChild: { padding: '9px 0' },
+  childGroup: {
+    marginLeft: '14px',
+    paddingLeft: '12px',
+    borderLeft: '2px solid var(--border)',
+  },
   toggleLabel: { fontFamily: 'var(--font-display)', fontSize: '15px', color: 'var(--text)' },
+  toggleLabelChild: { fontFamily: 'var(--font-display)', fontSize: '14px', color: 'var(--text2)' },
   track: { width: '40px', height: '24px', borderRadius: '12px', position: 'relative', transition: 'background 0.2s', flexShrink: 0 },
   thumb: { width: '20px', height: '20px', borderRadius: '50%', background: '#fff', position: 'absolute', top: '2px', transition: 'transform 0.2s' },
 
