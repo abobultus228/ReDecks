@@ -338,6 +338,8 @@ function RoomView({
         if (!e || e.discriminator !== 'message' || e.room_id !== room.id) return;
         const msg = wsEventToMessage(e);
         pushMessage(msg);
+        // мы в комнате и видим сообщение — сразу двигаем «прочитано»
+        socketRef.current?.send(JSON.stringify({ type: 'read', room_id: room.id }));
       },
       onClose: () => setWsReady(false),
       onError: () => setWsReady(false),
@@ -346,6 +348,9 @@ function RoomView({
 
     return () => {
       setWsReady(false);
+      // финальная отметка «прочитано» перед закрытием — на случай своих
+      // сообщений и сообщений, пришедших перед уходом
+      try { handle.send(JSON.stringify({ type: 'read', room_id: room.id })); } catch { /* ignore */ }
       handle.close();
       socketRef.current = null;
     };
@@ -367,6 +372,10 @@ function RoomView({
         text: value,
         local_uuid: localUuid,
       }));
+
+      // своё сообщение тоже должно стать «прочитанным», иначе last_read_dt
+      // останется временем входа и комната повиснет непрочитанной
+      ws.send(JSON.stringify({ type: 'read', room_id: room.id }));
 
       const optimistic: ChatMessage = {
         uuid: localUuid,
