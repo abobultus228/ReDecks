@@ -168,7 +168,7 @@ public class EventBattleService extends Service {
                 return "Неожиданный ответ сервера";
             }
             int cooldown = result.optInt("cooldown_seconds", -1);
-            if (cooldown != 30 && cooldown != 29) {
+            if (cooldown < 20 || cooldown > 30) {
                 return "Другой cooldown (" + cooldown + ") — остановка";
             }
             return result.optBoolean("won", false) ? "won" : "lost";
