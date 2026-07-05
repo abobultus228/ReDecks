@@ -37,6 +37,10 @@
         android:name=".EventBattleService"
         android:exported="false"
         android:foregroundServiceType="dataSync" />
+        <service
+        android:name=".ChapterReadService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync" />
     </application>
 
     <!-- Permissions -->
