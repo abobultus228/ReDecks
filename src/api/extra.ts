@@ -192,6 +192,74 @@ export async function markChaptersUnread(token: string, chapterIds: number[]): P
   }
 }
 
+// ─── Лимитированные тайтлы: чтение глав ──────────────────────────────────────
+
+export interface ChapterRef {
+  id: number;
+  viewed: boolean;
+}
+
+/** Все главы ветки в порядке index, с пометкой прочитанности. */
+export async function collectAllChapters(
+  token: string,
+  branchId: number,
+  onProgress?: (page: number, total: number) => void
+): Promise<ChapterRef[]> {
+  const out: ChapterRef[] = [];
+  let page = 1;
+  while (true) {
+    const params = new URLSearchParams({
+      branch_id: String(branchId),
+      chapter: '',
+      ordering: 'index',
+      page: String(page),
+      user_data: '1',
+    });
+    const data = await get<{ results?: any[]; next?: number | string | null }>(
+      token,
+      `${API_V2}/titles/chapters/?${params}`,
+      `получение глав page=${page}`
+    );
+    for (const ch of data?.results ?? []) {
+      if (ch?.id != null) out.push({ id: ch.id, viewed: ch.viewed === true });
+    }
+    onProgress?.(page, out.length);
+    const next = data?.next;
+    if (!next || !(data?.results?.length)) break;
+    page = typeof next === 'number' ? next : page + 1;
+  }
+  return out;
+}
+
+/**
+ * Отмечает одну главу прочитанной (POST /activity/views/ c {chapter}), прилагая
+ * все куки пользователя. Возвращает статус и тело ответа (для 200 — JSON).
+ */
+export async function readChapter(
+  token: string,
+  cookie: string,
+  chapterId: number
+): Promise<{ status: number; json: unknown }> {
+  const headers = { ...(makeHeaders(token, true) as Record<string, string>) };
+  if (cookie) headers['Cookie'] = cookie;
+
+  const response = await CapacitorHttp.post({
+    url: VIEWS_URL,
+    headers,
+    data: { chapter: chapterId },
+  });
+
+  if (response.status === 429) {
+    return { status: 429, json: null };
+  }
+
+  let json: unknown = response.data;
+  if (typeof response.data === 'string') {
+    try { json = JSON.parse(response.data); } catch { json = response.data; }
+  }
+  return { status: response.status, json };
+}
+
 // ─── Персонажи и карты (spisok) ──────────────────────────────────────────────
 
 export async function getCharacters(token: string, content: TitleContent): Promise<RemangaCharacter[]> {
