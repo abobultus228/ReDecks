@@ -30,6 +30,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ChatSocketPlugin.class);
         registerPlugin(NotifierPlugin.class);
         registerPlugin(EventBattlePlugin.class);
+        registerPlugin(ChapterReadPlugin.class);
         super.onCreate(savedInstanceState);
         hideSystemBars();
 
