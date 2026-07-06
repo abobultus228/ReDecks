@@ -2,6 +2,7 @@ import { CapacitorHttp } from '@capacitor/core';
 import { makeHeaders } from './remanga';
 
 const API_V2 = 'https://api.remanga.org/api/v2';
+const API_V3 = 'https://api.remanga.org/api/v3';
 const VIEWS_URL = 'https://api.remanga.org/api/activity/views/';
 
 export const MANGA_URL = (slug: string) => `https://remanga.org/manga/${slug}`;
@@ -429,6 +430,10 @@ export interface Exchange {
   partner: ExchangeUser;
   items_creator: { cards: ExchangeCardItem[] };
   items_partner: { cards: ExchangeCardItem[] };
+  /** Комментарий отправителя. null — сообщения нет. */
+  message_creator?: string | null;
+  /** Комментарий получателя. null — сообщения нет. */
+  message_partner?: string | null;
 }
 
 export interface ExchangesPageResult {
@@ -533,4 +538,183 @@ export function wsEventToMessage(ev: ChatWsEvent): ChatMessage {
     is_deleted: false,
     localUuid: ev.local_uuid ?? undefined,
   };
+}
+
+// ─── Форум ────────────────────────────────────────────────────────────────────
+
+export interface ForumTag {
+  id: number;
+  name: string;
+  description?: string;
+  dir?: string;
+  is_staff_only?: boolean;
+}
+
+export interface ForumAuthor {
+  id: number;
+  username?: string;
+  tagline?: string;
+  is_premium?: boolean;
+  avatar?: { mid?: string | null; high?: string | null } | null;
+}
+
+export interface ForumPost {
+  id: number;
+  dir: string;
+  header?: string;
+  text?: string;
+  score?: number;
+  count_comments?: number;
+  is_pinned?: boolean;
+  is_deleted?: boolean;
+  author_user?: ForumAuthor | null;
+  author_club?: { name?: string; avatar?: { mid?: string | null; high?: string | null } } | null;
+  author_publisher?: { name?: string } | null;
+  created_at: string;
+  tags?: ForumTag[];
+  /** Картинка поста. */
+  attachment?: { mid?: string | null; high?: string | null } | null;
+  /** Прочие вложения, в т.ч. карты (форма может отличаться — парсим защищённо). */
+  attachments?: unknown;
+}
+
+export type ForumOrdering = '-id' | 'id' | 'score';
+
+/** Все теги форума (одним запросом, count=200). */
+export async function getForumTags(token: string): Promise<ForumTag[]> {
+  const data = await get<{ results?: ForumTag[] }>(
+    token,
+    `${API_V2}/forum/tags/?count=200&page=1`,
+    'теги форума'
+  );
+  return data?.results ?? [];
+}
+
+export interface ForumPageResult {
+  results: ForumPost[];
+  hasMore: boolean;
+}
+
+/** Лента постов форума. tags — repeat-параметр (tags=12&tags=9). */
+export async function getForumPosts(
+  token: string,
+  opts: { page?: number; ordering?: ForumOrdering; tags?: number[]; search?: string }
+): Promise<ForumPageResult> {
+  const { page = 1, ordering = '-id', tags = [], search = '' } = opts;
+  const params = new URLSearchParams();
+  params.set('count', '20');
+  params.set('page', String(page));
+  params.set('week', 'false');
+  params.set('search', search);
+  params.set('ordering', ordering);
+  let qs = params.toString();
+  for (const t of tags) qs += `&tags=${encodeURIComponent(String(t))}`;
+
+  const data = await get<{ results?: ForumPost[]; next?: string | null }>(
+    token,
+    `${API_V2}/forum/search/?${qs}`,
+    `форум page=${page}`
+  );
+  const results = data?.results ?? [];
+  return { results, hasMore: Boolean(data?.next) && results.length > 0 };
+}
+
+// ─── Предложить обмен: поиск, инвентарь, создание ─────────────────────────────
+
+export interface UserLite {
+  id: number;
+  username: string;
+  tagline?: string | null;
+  is_premium?: boolean;
+  avatar?: { mid?: string | null; high?: string | null } | null;
+}
+
+/** Поиск пользователей по нику (первые 10). */
+export async function searchUsers(token: string, query: string): Promise<UserLite[]> {
+  const q = encodeURIComponent(query);
+  const data = await get<{ results?: UserLite[] }>(
+    token,
+    `${API_V2}/search/?count=10&field=users&page=1&query=${q}`,
+    'поиск пользователей'
+  );
+  return data?.results ?? [];
+}
+
+export interface InventoryInstance {
+  id: number;
+  is_exchangeable?: boolean;
+  is_awakened?: boolean;
+}
+
+export interface InventoryCard {
+  id: number;
+  cover?: { mid?: string | null; high?: string | null } | null;
+  rank?: string;
+  score?: number;
+  title?: { main_name?: string };
+  character?: { name?: string };
+}
+
+export interface InventoryGroup {
+  card: InventoryCard;
+  stack_count?: number;
+  cards: InventoryInstance[]; // физические копии карты (у каждой уникальный id)
+}
+
+export interface InventoryPage {
+  results: InventoryGroup[];
+  hasMore: boolean;
+}
+
+/** Инвентарь карт пользователя (group_by=card_id: дубликаты сгруппированы). Постранично. */
+export async function getInventoryCards(
+  token: string,
+  userId: number | string,
+  page: number
+): Promise<InventoryPage> {
+  const url =
+    `${API_V3}/inventory/items/cards/${userId}/` +
+    `?count=20&ordering=-id&is_favorite=false&is_exchangeable=true` +
+    `&card__is_exchangeable=true&group_by=card_id&page=${page}`;
+  const data = await get<{ results?: InventoryGroup[]; next?: string | null }>(
+    token,
+    url,
+    `инвентарь page=${page}`
+  );
+  const results = data?.results ?? [];
+  return { results, hasMore: Boolean(data?.next) && results.length > 0 };
+}
+
+export interface CreateExchangeInput {
+  partner: number;
+  creatorCards: number[]; // id физических карт, которые отдаём
+  partnerCards: number[]; // id физических карт, которые получаем
+  message?: string;
+}
+
+/** Создаёт обмен: POST /api/v2/inventory/{ourId}/exchanges/. */
+export async function createExchange(
+  token: string,
+  ourId: number | string,
+  input: CreateExchangeInput
+): Promise<void> {
+  const response = await CapacitorHttp.post({
+    url: `${API_V2}/inventory/${ourId}/exchanges/`,
+    headers: makeHeaders(token, true) as Record<string, string>,
+    data: {
+      partner: input.partner,
+      items_creator: { cards: input.creatorCards },
+      items_partner: { cards: input.partnerCards },
+      message_creator: input.message ?? '',
+    },
+  });
+  if (response.status === 401) {
+    throw new ExtraApiError('Ошибка 401: токен недействителен или истёк.');
+  }
+  if (response.status === 429) {
+    throw new RateLimitError();
+  }
+  if (response.status >= 400) {
+    throw new ExtraApiError(`Не удалось создать обмен: HTTP ${response.status}`);
+  }
 }

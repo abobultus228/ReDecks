@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store';
 import PageHeader from '../components/PageHeader';
 import ConfirmDialog from '../components/ConfirmDialog';
+import ExchangeBuilder, { type BuilderPartner } from './ExchangeBuilder';
 import {
   getExchanges,
   cancelExchange,
   respondExchange,
   resolveMediaUrl,
+  searchUsers,
+  getUserProfile,
   type Exchange,
   type ExchangeUser,
   type ExchangeCardItem,
   type ExchangeStatus,
+  type UserLite,
 } from '../api/extra';
 
 // ─── Статусы ──────────────────────────────────────────────────────────────────
@@ -36,9 +40,170 @@ function pluralCards(n: number): string {
   return `${n} ${w}`;
 }
 
-// ─── Страница ─────────────────────────────────────────────────────────────────
+/** true, если обложка — видео (анимированная карта). */
+function isVideoUrl(url: string): boolean {
+  return /\.(webm|mp4)(\?|#|$)/i.test(url);
+}
+
+// Открытие увеличенной карты пробрасываем через контекст, чтобы не тащить
+// колбэк через UserSide → CardScroller → CardThumb.
+const CardZoomContext = createContext<(cover: string) => void>(() => {});
+
+// ─── Обёртка: под-вкладки «Мои обмены» / «Предложить обмен» ────────────────────
 
 export default function ExchangesPage() {
+  const [sub, setSub] = useState<'mine' | 'offer'>('mine');
+  const [partner, setPartner] = useState<BuilderPartner | null>(null);
+
+  // выбран партнёр → полноэкранный билдер (вся страница скроллится, без прибитой шапки)
+  if (partner) {
+    return (
+      <ExchangeBuilder
+        partner={partner}
+        onBack={() => setPartner(null)}
+        onSent={() => { setPartner(null); setSub('mine'); }}
+      />
+    );
+  }
+
+  return (
+    <div style={w.root}>
+      <div style={w.tabs}>
+        <button style={{ ...w.tab, ...(sub === 'mine' ? w.tabOn : {}) }} onClick={() => setSub('mine')}>
+          Мои обмены
+        </button>
+        <button style={{ ...w.tab, ...(sub === 'offer' ? w.tabOn : {}) }} onClick={() => setSub('offer')}>
+          Предложить обмен
+        </button>
+      </div>
+      <div style={w.body}>
+        {sub === 'mine' ? <MyExchangesTab /> : <OfferSearch onPick={setPartner} />}
+      </div>
+    </div>
+  );
+}
+
+// ─── Поиск пользователя для обмена ─────────────────────────────────────────────
+
+function OfferSearch({ onPick }: { onPick: (p: BuilderPartner) => void }) {
+  const token = useAppStore((s) => s.token);
+  const [mode, setMode] = useState<'nick' | 'id'>('nick');
+  const [query, setQuery] = useState('');
+  const [idValue, setIdValue] = useState('');
+  const [results, setResults] = useState<UserLite[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [resolving, setResolving] = useState(false);
+
+  // живой поиск по нику с дебаунсом
+  useEffect(() => {
+    if (mode !== 'nick') return;
+    const q = query.trim();
+    if (!q) { setResults([]); setError(''); setLoading(false); return; }
+    let alive = true;
+    setLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const list = await searchUsers(token, q);
+        if (alive) { setResults(list); setError(''); }
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }, 400);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [query, mode, token]);
+
+  const pickUser = (u: UserLite) =>
+    onPick({ id: u.id, name: u.username, avatarMid: resolveMediaUrl(u.avatar?.mid || u.avatar?.high || '') });
+
+  const submitId = async () => {
+    const id = parseInt(idValue.trim(), 10);
+    if (!Number.isFinite(id) || id <= 0) { setError('Введите корректный ID'); return; }
+    setResolving(true); setError('');
+    try {
+      const p = await getUserProfile(token, id);
+      onPick({ id, name: p.username || `ID ${id}`, avatarMid: p.avatarUrl || '' });
+    } catch {
+      onPick({ id, name: `ID ${id}`, avatarMid: '' }); // профиль не достали — идём с одним ID
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  return (
+    <div style={w.offerRoot}>
+      <div style={w.headerBleed}><PageHeader title="Обмены" sub="новый обмен" /></div>
+      <div style={w.modeRow}>
+        <button style={{ ...w.modeBtn, ...(mode === 'nick' ? w.modeOn : {}) }} onClick={() => { setMode('nick'); setError(''); }}>
+          По нику
+        </button>
+        <button style={{ ...w.modeBtn, ...(mode === 'id' ? w.modeOn : {}) }} onClick={() => { setMode('id'); setError(''); }}>
+          По ID
+        </button>
+      </div>
+
+      {mode === 'nick' ? (
+        <>
+          <input
+            style={w.input}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Никнейм пользователя"
+            autoCapitalize="off"
+            autoCorrect="off"
+          />
+          {loading && <p style={w.info}>Поиск…</p>}
+          {error && <p style={w.errInline}>{error}</p>}
+          <div style={w.userList}>
+            {results.map((u) => {
+              const av = resolveMediaUrl(u.avatar?.mid || u.avatar?.high || '');
+              return (
+                <button key={u.id} style={w.userRow} onClick={() => pickUser(u)}>
+                  {av
+                    ? (isVideoUrl(av)
+                        ? <video src={av} style={w.userAv} autoPlay loop muted playsInline />
+                        : <img src={av} style={w.userAv} alt="" />)
+                    : <div style={{ ...w.userAv, ...w.userAvEmpty }}>{(u.username || '?')[0]}</div>}
+                  <div style={w.userCol}>
+                    <span style={w.userName}>{u.username}</span>
+                    {u.tagline && <span style={w.userTag}>{u.tagline}</span>}
+                  </div>
+                </button>
+              );
+            })}
+            {!loading && !error && query.trim() && results.length === 0 && (
+              <p style={w.info}>Никого не найдено.</p>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <input
+            style={w.input}
+            value={idValue}
+            onChange={(e) => setIdValue(e.target.value.replace(/[^\d]/g, ''))}
+            placeholder="ID пользователя"
+            inputMode="numeric"
+          />
+          {error && <p style={w.errInline}>{error}</p>}
+          <button
+            style={{ ...w.idBtn, ...(idValue.trim() && !resolving ? {} : w.idBtnDisabled) }}
+            onClick={submitId}
+            disabled={!idValue.trim() || resolving}
+          >
+            {resolving ? 'Открываю…' : 'Перейти к обмену'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Мои обмены ────────────────────────────────────────────────────────────────
+
+function MyExchangesTab() {
   const token = useAppStore((s) => s.token);
   const userId = useAppStore((s) => s.userId);
 
@@ -50,6 +215,9 @@ export default function ExchangesPage() {
 
   const loadingRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Увеличенная карта (null — закрыта).
+  const [zoomCover, setZoomCover] = useState<string | null>(null);
 
   const loadNext = useCallback(async () => {
     if (loadingRef.current || !hasMore) return;
@@ -119,36 +287,58 @@ export default function ExchangesPage() {
   );
 
   return (
-    <div style={p.root}>
-      <PageHeader title="Обмены" sub="последние обмены" />
+    <CardZoomContext.Provider value={setZoomCover}>
+      <div style={p.root}>
+        <div style={p.scroll} ref={scrollRef} onScroll={onScroll}>
+          <div style={p.headerBleed}><PageHeader title="Обмены" sub="обмены картами" /></div>
+          {items.map((ex) => (
+            <ExchangeCard key={ex.id} ex={ex} userId={userId} onCancel={cancel} onRespond={respond} />
+          ))}
 
-      <div style={p.scroll} ref={scrollRef} onScroll={onScroll}>
-        {items.map((ex) => (
-          <ExchangeCard key={ex.id} ex={ex} userId={userId} onCancel={cancel} onRespond={respond} />
-        ))}
+          {loading && (
+            <div style={p.statusRow}>
+              <span style={p.spinner} />
+              <span style={p.statusText}>Загрузка…</span>
+            </div>
+          )}
 
-        {loading && (
-          <div style={p.statusRow}>
-            <span style={p.spinner} />
-            <span style={p.statusText}>Загрузка…</span>
-          </div>
-        )}
+          {error && (
+            <div style={p.errorBox}>
+              <span style={p.errorText}>{error}</span>
+              <button style={p.retryBtn} onClick={retry}>
+                Повторить
+              </button>
+            </div>
+          )}
 
-        {error && (
-          <div style={p.errorBox}>
-            <span style={p.errorText}>{error}</span>
-            <button style={p.retryBtn} onClick={retry}>
-              Повторить
-            </button>
-          </div>
-        )}
+          {!loading && !error && !hasMore && items.length > 0 && (
+            <p style={p.endNote}>Это все обмены.</p>
+          )}
 
-        {!loading && !error && !hasMore && items.length > 0 && (
-          <p style={p.endNote}>Это все обмены.</p>
-        )}
+          {!loading && !error && hasMore === false && items.length === 0 && (
+            <p style={p.empty}>Обменов пока нет.</p>
+          )}
+        </div>
+      </div>
 
-        {!loading && !error && hasMore === false && items.length === 0 && (
-          <p style={p.empty}>Обменов пока нет.</p>
+      {zoomCover && <CardZoomOverlay cover={zoomCover} onClose={() => setZoomCover(null)} />}
+    </CardZoomContext.Provider>
+  );
+}
+
+// ─── Увеличенная карта ────────────────────────────────────────────────────────
+
+function CardZoomOverlay({ cover, onClose }: { cover: string; onClose: () => void }) {
+  const isVid = isVideoUrl(cover);
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
+  return (
+    <div style={p.zoomBackdrop} onClick={onClose}>
+      <div style={p.zoomWrap}>
+        <button style={p.zoomClose} onClick={onClose} aria-label="Закрыть">×</button>
+        {isVid ? (
+          <video src={cover} style={p.zoomMedia} onClick={stop} autoPlay loop muted playsInline />
+        ) : (
+          <img src={cover} style={p.zoomMedia} onClick={stop} alt="" />
         )}
       </div>
     </div>
@@ -186,6 +376,9 @@ function ExchangeCard({
       {/* низ — получатель запроса */}
       <UserSide user={ex.partner} cards={ex.items_partner?.cards ?? []} />
 
+      {/* комментарии сторон (если есть) */}
+      <CommentsSection ex={ex} />
+
       {/* отправитель может отменить свой ещё не отвеченный обмен */}
       {pending && isCreator && <CancelFooter onConfirm={() => onCancel(ex.id)} />}
       {/* получатель может принять или отклонить */}
@@ -194,6 +387,58 @@ function ExchangeCard({
           onAccept={(c) => onRespond(ex.id, 'accepted', c)}
           onDeny={(c) => onRespond(ex.id, 'denied', c)}
         />
+      )}
+    </div>
+  );
+}
+
+// ─── Комментарии сторон ───────────────────────────────────────────────────────
+
+/** Нормализует сообщение: null/пусто/«.» (плейсхолдер отмены) → нет сообщения. */
+function normalizeMessage(msg?: string | null): string {
+  if (typeof msg !== 'string') return '';
+  const t = msg.trim();
+  return t === '.' ? '' : t;
+}
+
+function CommentsSection({ ex }: { ex: Exchange }) {
+  const creator = normalizeMessage(ex.message_creator);
+  const partner = normalizeMessage(ex.message_partner);
+  if (!creator && !partner) return null;
+  return (
+    <div style={p.comments}>
+      {creator && <CommentBlock label="Сообщение отправителя:" text={creator} />}
+      {partner && <CommentBlock label="Сообщение получателя:" text={partner} />}
+    </div>
+  );
+}
+
+/** Текст комментария со сворачиванием: длинный клампится до 3 строк + «Раскрыть». */
+function CommentBlock({ label, text }: { label: string; text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflow, setOverflow] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Замер делаем в склампленном состоянии (при монтировании expanded=false):
+  // если реальная высота больше видимой — текст длинный, показываем «Раскрыть».
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setOverflow(el.scrollHeight > el.clientHeight + 1);
+  }, [text]);
+
+  const clamp: React.CSSProperties = expanded
+    ? {}
+    : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' };
+
+  return (
+    <div style={p.comment}>
+      <span style={p.commentLabel}>{label}</span>
+      <div ref={ref} style={{ ...p.commentText, ...clamp }}>{text}</div>
+      {(overflow || expanded) && (
+        <button style={p.commentToggle} onClick={() => setExpanded((v) => !v)}>
+          {expanded ? 'Свернуть' : 'Раскрыть'}
+        </button>
       )}
     </div>
   );
@@ -467,8 +712,11 @@ function Avatar({ url, premium }: { url: string; premium?: boolean }) {
 
 function CardThumb({ item }: { item: ExchangeCardItem }) {
   const cover = resolveMediaUrl(item?.card?.cover?.mid || item?.card?.cover?.high || '');
+  // В зуме показываем high-качество (в миниатюре остаётся mid).
+  const coverHigh = resolveMediaUrl(item?.card?.cover?.high || item?.card?.cover?.mid || '');
   const [err, setErr] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const openZoom = useContext(CardZoomContext);
 
   // Анимированные карты приходят как .webm — это видео, не картинка.
   const isVideo = Boolean(cover) && !err && /\.webm(\?|$)/i.test(cover);
@@ -483,7 +731,7 @@ function CardThumb({ item }: { item: ExchangeCardItem }) {
   }
 
   return (
-    <div style={p.cardThumb}>
+    <div style={p.cardThumb} onClick={() => openZoom(coverHigh)}>
       {isVideo ? (
         <video
           ref={videoRef}
@@ -512,6 +760,7 @@ function CardThumb({ item }: { item: ExchangeCardItem }) {
 // ─── Стили ────────────────────────────────────────────────────────────────────
 
 const p: Record<string, React.CSSProperties> = {
+  headerBleed: { margin: '-12px -12px 0' },
   root: {
     height: '100%',
     display: 'flex',
@@ -672,6 +921,7 @@ const p: Record<string, React.CSSProperties> = {
     background: 'var(--bg3)',
     border: '1px solid var(--border)',
     scrollSnapAlign: 'start',
+    cursor: 'pointer',
   },
   cardImg: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
   cardImgFallback: { width: '100%', height: '100%', background: 'var(--bg3)' },
@@ -680,6 +930,81 @@ const p: Record<string, React.CSSProperties> = {
     fontSize: '11px',
     color: 'var(--text3)',
     padding: '4px 0',
+  },
+
+  // ── комментарии сторон ──
+  comments: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    padding: '12px 14px',
+    borderTop: '1px solid var(--border)',
+    background: 'var(--bg2)',
+  },
+  comment: { display: 'flex', flexDirection: 'column', gap: '3px' },
+  commentLabel: {
+    fontFamily: 'var(--font-mono)',
+    fontSize: '11px',
+    color: 'var(--text3)',
+    letterSpacing: '0.02em',
+  },
+  commentText: {
+    fontFamily: 'var(--font-display)',
+    fontSize: '13px',
+    lineHeight: 1.45,
+    color: 'var(--text)',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+  },
+  commentToggle: {
+    alignSelf: 'flex-start',
+    marginTop: '2px',
+    padding: 0,
+    background: 'none',
+    border: 'none',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '11px',
+    color: 'var(--accent)',
+    cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+  },
+
+  // ── увеличенная карта ──
+  zoomBackdrop: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 1000,
+    background: 'rgba(0,0,0,0.55)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px',
+  },
+  zoomWrap: { position: 'relative', display: 'inline-block', lineHeight: 0 },
+  zoomClose: {
+    position: 'absolute',
+    top: '-14px',
+    right: '-14px',
+    width: '30px',
+    height: '30px',
+    borderRadius: '50%',
+    border: 'none',
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    fontSize: '20px',
+    lineHeight: '30px',
+    textAlign: 'center',
+    padding: 0,
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  zoomMedia: {
+    maxHeight: '85vh',
+    maxWidth: '85vw',
+    width: 'auto',
+    height: 'auto',
+    display: 'block',
   },
 
   statusRow: {
@@ -738,4 +1063,53 @@ const p: Record<string, React.CSSProperties> = {
     textAlign: 'center',
     padding: '20px 0',
   },
+};
+
+// ─── Стили обёртки и поиска ────────────────────────────────────────────────────
+
+const w: Record<string, React.CSSProperties> = {
+  headerBleed: { margin: '-12px -12px 0' },
+  root: { height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' },
+  tabs: { display: 'flex', gap: '6px', padding: '10px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 },
+  tab: {
+    flex: 1, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+    color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px',
+    padding: '10px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+  },
+  tabOn: { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' },
+  body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
+
+  offerRoot: { flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' },
+  modeRow: { display: 'flex', gap: '6px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px' },
+  modeBtn: {
+    flex: 1, background: 'transparent', color: 'var(--text2)', border: 'none', borderRadius: '6px',
+    padding: '9px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px', cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  modeOn: { background: 'var(--accent)', color: '#fff' },
+  input: {
+    background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+    color: 'var(--text)', fontFamily: 'var(--font-display)', fontSize: '14px', padding: '12px', outline: 'none',
+  },
+  info: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text3)', textAlign: 'center', padding: '6px 0' },
+  errInline: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--red)' },
+
+  userList: { display: 'flex', flexDirection: 'column', gap: '6px' },
+  userRow: {
+    display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left', width: '100%',
+    background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+    padding: '9px 10px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+  },
+  userAv: { width: '38px', height: '38px', borderRadius: '10px', objectFit: 'cover', flexShrink: 0, background: 'var(--bg3)' },
+  userAvEmpty: { display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--text3)', border: '1px solid var(--border)' },
+  userCol: { display: 'flex', flexDirection: 'column', minWidth: 0 },
+  userName: { fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  userTag: { fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+
+  idBtn: {
+    background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
+    padding: '12px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  idBtnDisabled: { opacity: 0.4, cursor: 'not-allowed' },
 };

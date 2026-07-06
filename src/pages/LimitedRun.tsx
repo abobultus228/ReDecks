@@ -14,7 +14,7 @@ import {
 import type { LimitedTitle } from '../utils/limitedTitles';
 
 type Phase = 'intro' | 'count' | 'run';
-const MAX_PER_RUN = 500;
+const MAX_PER_RUN = 800;
 
 export default function LimitedRun({
   title, onBack,

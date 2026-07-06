@@ -166,7 +166,9 @@ function ListView({ token, onOpen }: { token: string; onOpen: (r: ChatRoom) => v
             return (
               <button key={r.id} style={s.roomItem} onClick={() => onOpen(r)}>
                 {cover
-                  ? <img src={cover} alt="" style={s.roomCover} />
+                  ? (isVideo(cover)
+                      ? <video src={cover} style={s.roomCover} autoPlay loop muted playsInline />
+                      : <img src={cover} alt="" style={s.roomCover} />)
                   : <div style={{ ...s.roomCover, ...s.roomCoverEmpty }}>{(r.name || '?')[0]}</div>}
                 <div style={s.roomMid}>
                   <span style={s.roomName}>{r.name}</span>

@@ -1,7 +1,7 @@
 import { Preferences } from '@capacitor/preferences';
 
 const KEY = 'limited:daily';
-export const DAILY_MAX = 500;
+export const DAILY_MAX = 800;
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);

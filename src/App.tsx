@@ -10,6 +10,7 @@ import ChatPage from './pages/ChatPage';
 import EventPage from './pages/EventPage';
 import AppSettingsPage from './pages/AppSettingsPage';
 import ExchangesPage from './pages/ExchangesPage';
+import ForumPage from './pages/ForumPage';
 import OnboardingPage from './pages/OnboardingPage';
 import { syncNotifier, seedExchangeBaseline } from './utils/notifier';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -89,6 +90,7 @@ export default function App() {
         {tab === 'event' && <EventPage />}
         {tab === 'cards' && <CardsPage />}
         {tab === 'exchanges' && <ExchangesPage />}
+        {tab === 'forum' && <ForumPage />}
         {tab === 'settings' && <AppSettingsPage onLogout={() => { setAuthed(false); }} />}
       </div>
       {!(tab === 'chat' && chatInRoom) && <NavBar active={tab} onChange={setTab} />}
