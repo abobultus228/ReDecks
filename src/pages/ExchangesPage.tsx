@@ -68,24 +68,33 @@ export default function ExchangesPage() {
 
   return (
     <div style={w.root}>
-      <div style={w.tabs}>
-        <button style={{ ...w.tab, ...(sub === 'mine' ? w.tabOn : {}) }} onClick={() => setSub('mine')}>
-          Мои обмены
-        </button>
-        <button style={{ ...w.tab, ...(sub === 'offer' ? w.tabOn : {}) }} onClick={() => setSub('offer')}>
-          Предложить обмен
-        </button>
-      </div>
+      <PageHeader title="Обмены" sub="обмены картами" />
       <div style={w.body}>
-        {sub === 'mine' ? <MyExchangesTab /> : <OfferSearch onPick={setPartner} />}
+        {sub === 'mine'
+          ? <MyExchangesTab sub={sub} setSub={setSub} />
+          : <OfferSearch sub={sub} setSub={setSub} onPick={setPartner} />}
       </div>
+    </div>
+  );
+}
+
+/** Переключатель под-вкладок — рендерится внутри скролла страницы (не прибит). */
+function SubTabs({ sub, setSub }: { sub: 'mine' | 'offer'; setSub: (s: 'mine' | 'offer') => void }) {
+  return (
+    <div style={w.subTabs}>
+      <button style={{ ...w.tab, ...(sub === 'mine' ? w.tabOn : {}) }} onClick={() => setSub('mine')}>
+        Мои обмены
+      </button>
+      <button style={{ ...w.tab, ...(sub === 'offer' ? w.tabOn : {}) }} onClick={() => setSub('offer')}>
+        Предложить обмен
+      </button>
     </div>
   );
 }
 
 // ─── Поиск пользователя для обмена ─────────────────────────────────────────────
 
-function OfferSearch({ onPick }: { onPick: (p: BuilderPartner) => void }) {
+function OfferSearch({ sub, setSub, onPick }: { sub: 'mine' | 'offer'; setSub: (s: 'mine' | 'offer') => void; onPick: (p: BuilderPartner) => void }) {
   const token = useAppStore((s) => s.token);
   const [mode, setMode] = useState<'nick' | 'id'>('nick');
   const [query, setQuery] = useState('');
@@ -134,7 +143,7 @@ function OfferSearch({ onPick }: { onPick: (p: BuilderPartner) => void }) {
 
   return (
     <div style={w.offerRoot}>
-      <div style={w.headerBleed}><PageHeader title="Обмены" sub="новый обмен" /></div>
+      <SubTabs sub={sub} setSub={setSub} />
       <div style={w.modeRow}>
         <button style={{ ...w.modeBtn, ...(mode === 'nick' ? w.modeOn : {}) }} onClick={() => { setMode('nick'); setError(''); }}>
           По нику
@@ -203,7 +212,7 @@ function OfferSearch({ onPick }: { onPick: (p: BuilderPartner) => void }) {
 
 // ─── Мои обмены ────────────────────────────────────────────────────────────────
 
-function MyExchangesTab() {
+function MyExchangesTab({ sub, setSub }: { sub: 'mine' | 'offer'; setSub: (s: 'mine' | 'offer') => void }) {
   const token = useAppStore((s) => s.token);
   const userId = useAppStore((s) => s.userId);
 
@@ -290,7 +299,7 @@ function MyExchangesTab() {
     <CardZoomContext.Provider value={setZoomCover}>
       <div style={p.root}>
         <div style={p.scroll} ref={scrollRef} onScroll={onScroll}>
-          <div style={p.headerBleed}><PageHeader title="Обмены" sub="обмены картами" /></div>
+          <SubTabs sub={sub} setSub={setSub} />
           {items.map((ex) => (
             <ExchangeCard key={ex.id} ex={ex} userId={userId} onCancel={cancel} onRespond={respond} />
           ))}
@@ -1071,6 +1080,7 @@ const w: Record<string, React.CSSProperties> = {
   headerBleed: { margin: '-12px -12px 0' },
   root: { height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' },
   tabs: { display: 'flex', gap: '6px', padding: '10px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 },
+  subTabs: { display: 'flex', gap: '6px' },
   tab: {
     flex: 1, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
     color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px',
