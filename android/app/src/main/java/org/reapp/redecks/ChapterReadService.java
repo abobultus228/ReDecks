@@ -29,8 +29,10 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Foreground-сервис чтения глав лимитированного тайтла: сбрасывает прочитанные
@@ -48,7 +50,7 @@ public class ChapterReadService extends Service {
 
     private static final String API_V2 = "https://api.remanga.org/api/v2";
     private static final String VIEWS_URL = "https://api.remanga.org/api/activity/views/";
-    private static final String VIEW_PAGE_URL = "https://api.remanga.org/api/v2/activity/view-page/";
+    private static final String VOTES_URL = "https://api.remanga.org/api/activity/votes/";
 
     private static final long READ_DELAY_MS = 1000;
     private static final long[] RETRY_DELAYS = { 3000, 6000 };
@@ -128,11 +130,23 @@ public class ChapterReadService extends Service {
                 }
             }
 
+            // Главы, за которые уже проголосовали в этом прогоне (как rated у друга):
+            // votes/ шлём один раз на главу, повторно нельзя (это переключатель).
+            Set<Integer> voted = new HashSet<>();
+
             while (ChapterReadPlugin.readsDone < target && !ChapterReadPlugin.stopRequested) {
                 int before = ChapterReadPlugin.readsDone;
 
                 for (int id : readingSet) {
                     if (ChapterReadPlugin.readsDone >= target || ChapterReadPlugin.stopRequested) break;
+
+                    // Как в рабочем клиенте: перед первым чтением главы голосуем за неё
+                    // (POST votes/). Вероятный триггер выпадения карты. Один раз на главу.
+                    if (!voted.contains(id)) {
+                        int vc = doVote(token, cookie, id);
+                        voted.add(id);
+                        Log.i(TAG, "vote id=" + id + " status=" + vc);
+                    }
 
                     // чтение с обработкой 429: 3с → 6с → пропуск главы
                     int attempt = 0;
@@ -158,15 +172,10 @@ public class ChapterReadService extends Service {
                     if (skip) continue;
 
                     if (rr.status == 200 || rr.status == 204) {
-                        // Сразу после views (без задержки) шлём view-page со страницей -1.
-                        // Вероятный триггер дропа карты — награды из него тоже учитываем.
-                        ReadResult vp = doViewPage(token, cookie, id);
-                        Log.i(TAG, "view-page id=" + id + " status=" + vp.status
-                                + " карт=" + vp.cards + " молний=" + vp.coins);
-
+                        // Карты приходят прямо в ответе views/ (как у друга).
                         ChapterReadPlugin.readsDone++;
-                        ChapterReadPlugin.coins += rr.coins + vp.coins;
-                        ChapterReadPlugin.cards += rr.cards + vp.cards;
+                        ChapterReadPlugin.coins += rr.coins;
+                        ChapterReadPlugin.cards += rr.cards;
                         updateNotification();
                         sleepMs(READ_DELAY_MS);
                     } else {
@@ -253,8 +262,8 @@ public class ChapterReadService extends Service {
         try {
             conn = (HttpURLConnection) new URL(urlStr).openConnection();
             conn.setRequestMethod("GET");
-            conn.setConnectTimeout(20000);
-            conn.setReadTimeout(20000);
+            conn.setConnectTimeout(100000);
+            conn.setReadTimeout(100000);
             applyHeaders(conn, token, cookie, false);
             if (conn.getResponseCode() != 200) return null;
             return readBody(conn.getInputStream());
@@ -307,8 +316,8 @@ public class ChapterReadService extends Service {
 
             conn = (HttpURLConnection) new URL(VIEWS_URL).openConnection();
             conn.setRequestMethod("DELETE");
-            conn.setConnectTimeout(20000);
-            conn.setReadTimeout(20000);
+            conn.setConnectTimeout(100000);
+            conn.setReadTimeout(100000);
             applyHeaders(conn, token, cookie, true);
             conn.setDoOutput(true);
             byte[] b = body.getBytes("UTF-8");
@@ -331,8 +340,8 @@ public class ChapterReadService extends Service {
         try {
             conn = (HttpURLConnection) new URL(VIEWS_URL).openConnection();
             conn.setRequestMethod("POST");
-            conn.setConnectTimeout(20000);
-            conn.setReadTimeout(20000);
+            conn.setConnectTimeout(100000);
+            conn.setReadTimeout(100000);
             applyHeaders(conn, token, cookie, true);
             conn.setDoOutput(true);
             byte[] b = ("{\"chapter\":" + chapterId + "}").getBytes("UTF-8");
@@ -365,41 +374,23 @@ public class ChapterReadService extends Service {
         }
     }
 
-    private ReadResult doViewPage(String token, String cookie, int chapterId) {
+    /** Голос/лайк за главу: POST votes/ {"chapter_ids":[id]}. Один раз на главу. */
+    private int doVote(String token, String cookie, int chapterId) {
         HttpURLConnection conn = null;
-        ReadResult rr = new ReadResult();
         try {
-            conn = (HttpURLConnection) new URL(VIEW_PAGE_URL).openConnection();
+            conn = (HttpURLConnection) new URL(VOTES_URL).openConnection();
             conn.setRequestMethod("POST");
-            conn.setConnectTimeout(20000);
-            conn.setReadTimeout(20000);
+            conn.setConnectTimeout(100000);
+            conn.setReadTimeout(100000);
             applyHeaders(conn, token, cookie, true);
             conn.setDoOutput(true);
-            byte[] b = ("{\"chapter_id\":" + chapterId + ",\"page\":-1}").getBytes("UTF-8");
+            byte[] b = ("{\"chapter_ids\":[" + chapterId + "]}").getBytes("UTF-8");
             conn.setFixedLengthStreamingMode(b.length);
             try (OutputStream os = conn.getOutputStream()) { os.write(b); }
-
-            int code = conn.getResponseCode();
-            rr.status = code;
-            if (code == 200) {
-                String body = readBody(conn.getInputStream());
-                try {
-                    JSONArray rewards = new JSONObject(body).optJSONArray("rewards");
-                    if (rewards != null) {
-                        for (int i = 0; i < rewards.length(); i++) {
-                            JSONObject r = rewards.optJSONObject(i);
-                            if (r == null) continue;
-                            if ("coins".equals(r.optString("type", ""))) rr.coins += r.optInt("value", 0);
-                            else rr.cards += 1;
-                        }
-                    }
-                } catch (Exception ignore) { /* тело без наград — не страшно */ }
-            }
-            return rr;
+            return conn.getResponseCode();
         } catch (Exception e) {
-            Log.w(TAG, "doViewPage", e);
-            rr.status = -1;
-            return rr;
+            Log.w(TAG, "doVote", e);
+            return -1;
         } finally {
             if (conn != null) conn.disconnect();
         }
@@ -419,8 +410,8 @@ public class ChapterReadService extends Service {
 
             conn = (HttpURLConnection) new URL(VIEWS_URL).openConnection();
             conn.setRequestMethod("POST");
-            conn.setConnectTimeout(20000);
-            conn.setReadTimeout(20000);
+            conn.setConnectTimeout(100000);
+            conn.setReadTimeout(100000);
             applyHeaders(conn, token, cookie, true);
             conn.setDoOutput(true);
 
