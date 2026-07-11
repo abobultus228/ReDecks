@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-export type Tab = 'chat' | 'chapters' | 'decks' | 'event' | 'cards' | 'exchanges' | 'settings';
+export type Tab = 'chat' | 'chapters' | 'decks' | 'event' | 'cards' | 'exchanges' | 'forum' | 'settings';
 
 interface Props {
   active: Tab;
@@ -10,7 +10,7 @@ interface Props {
 const ROW = 56;  // высота ряда плиток
 const GAP = 8;   // расстояние между плитками
 
-const HIDDEN: Tab[] = ['decks', 'event', 'cards', 'exchanges', 'settings']; // что прячется под «Ещё»
+const HIDDEN: Tab[] = ['decks', 'event', 'cards', 'exchanges', 'forum', 'settings']; // что прячется под «Ещё»
 
 // ─── Иконки ──────────────────────────────────────────────────────────────────
 
@@ -70,6 +70,12 @@ const icons: Record<string, React.ReactNode> = {
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   ),
+  forum: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M13 8V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2v3l3.5-3.5" />
+      <path d="M9 12a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2v3l-3.5-3.5H11a2 2 0 0 1-2-2z" />
+    </svg>
+  ),
 };
 
 function Tile({
@@ -125,9 +131,10 @@ export default function NavBar({ active, onChange }: Props) {
           <Tile iconKey="cards" label="Персонажи" on={active === 'cards'} onClick={() => pick('cards')} />
         </div>
 
-        {/* третий ряд — «Настройки» (две плитки, слева) и «Обмены» (справа) */}
+        {/* третий ряд — «Настройки», «Форум» и «Обмены» */}
         <div style={s.row}>
-          <Tile iconKey="settings" label="Настройки" on={active === 'settings'} onClick={() => pick('settings')} span={2} />
+          <Tile iconKey="settings" label="Настройки" on={active === 'settings'} onClick={() => pick('settings')} />
+          <Tile iconKey="forum" label="Форум" on={active === 'forum'} onClick={() => pick('forum')} />
           <Tile iconKey="exchanges" label="Обмены" on={active === 'exchanges'} onClick={() => pick('exchanges')} />
         </div>
       </div>

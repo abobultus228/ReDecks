@@ -3,12 +3,47 @@ import { Browser } from '@capacitor/browser';
 import { useAppStore } from '../store';
 import TitlePicker from '../components/TitlePicker';
 import PageHeader from '../components/PageHeader';
+import TitleCardsSection from './TitleCardsSection';
 import {
   getTitleContent,
   getCharacters,
   getCardsTotal,
   CHARACTER_URL,
 } from '../api/extra';
+
+// ─── Обёртка с под-вкладками ────────────────────────────────────────────────────
+
+export default function CardsPage() {
+  const [tab, setTab] = useState<'chars' | 'title'>('chars');
+  return (
+    <div style={w.root}>
+      <PageHeader title="Персонажи" sub="карты по персонажам и тайтлам" />
+      <div style={w.tabs}>
+        <button style={{ ...w.tab, ...(tab === 'chars' ? w.tabOn : {}) }} onClick={() => setTab('chars')}>
+          Персонажи
+        </button>
+        <button style={{ ...w.tab, ...(tab === 'title' ? w.tabOn : {}) }} onClick={() => setTab('title')}>
+          Карты тайтла
+        </button>
+      </div>
+      <div style={w.body}>
+        {tab === 'chars' ? <CharactersTab /> : <TitleCardsSection />}
+      </div>
+    </div>
+  );
+}
+
+const w: Record<string, React.CSSProperties> = {
+  root: { height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' },
+  tabs: { display: 'flex', gap: '6px', padding: '10px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 },
+  tab: {
+    flex: 1, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+    color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px',
+    padding: '10px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+  },
+  tabOn: { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' },
+  body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
+};
 
 // Тайминги запроса карт по персонажам
 const REQUEST_DELAY = 400;     // стартовая пауза между запросами, мс
@@ -25,7 +60,7 @@ interface CharRow {
 
 type Phase = 'pick' | 'loading' | 'list';
 
-export default function CardsPage() {
+function CharactersTab() {
   const token = useAppStore((s) => s.token);
   const [phase, setPhase] = useState<Phase>('pick');
   const [titleLabel, setTitleLabel] = useState('');
@@ -168,15 +203,10 @@ export default function CardsPage() {
 
   return (
     <div style={p.root}>
-      <PageHeader
-        title="Персонажи"
-        sub="сколько карт у каждого"
-        action={phase !== 'pick'
-          ? <button style={p.resetBtn} onClick={reset}>другой тайтл</button>
-          : undefined}
-      />
-
       <div style={p.scroll}>
+        {phase !== 'pick' && (
+          <button style={p.resetInline} onClick={reset}>← другой тайтл</button>
+        )}
         {phase === 'pick' && (
           <>
             <Card title="Тайтл">
@@ -336,6 +366,7 @@ const p: Record<string, React.CSSProperties> = {
   title: { fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '20px', letterSpacing: '-0.02em', color: 'var(--text)' },
   sub: { fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--accent)', letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: '2px' },
   resetBtn: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text3)', background: 'transparent', border: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
+  resetInline: { alignSelf: 'flex-start', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text2)', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '7px 12px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
   scroll: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' },
   card: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', flexShrink: 0 },
   cardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderBottom: '1px solid var(--border)' },

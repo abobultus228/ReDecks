@@ -11,6 +11,14 @@ interface AppState {
   setUserId: (id: string) => void;
   setIsPremium: (val: boolean) => void;
 
+  // Навигация: открыть обмен с этим пользователем (транзиентно, не персистится)
+  exchangeTargetUserId: number | null;
+  setExchangeTargetUserId: (id: number | null) => void;
+
+  // Навигация: открыть/создать чат с этим пользователем (транзиентно)
+  chatTargetUserId: number | null;
+  setChatTargetUserId: (id: number | null) => void;
+
   // Notifications
   notificationsEnabled: boolean;
   chatNotificationsEnabled: boolean;
@@ -72,6 +80,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   setToken: (token) => set({ token }),
   setUserId: (userId) => set({ userId }),
   setIsPremium: (isPremium) => set({ isPremium }),
+
+  exchangeTargetUserId: null,
+  setExchangeTargetUserId: (exchangeTargetUserId) => set({ exchangeTargetUserId }),
+
+  chatTargetUserId: null,
+  setChatTargetUserId: (chatTargetUserId) => set({ chatTargetUserId }),
 
   notificationsEnabled: true,
   chatNotificationsEnabled: true,

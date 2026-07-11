@@ -3,6 +3,7 @@ import { InAppBrowser } from '@awesome-cordova-plugins/in-app-browser';
 import { Preferences } from '@capacitor/preferences';
 import { useAppStore } from '../store';
 import { CapacitorHttp } from '@capacitor/core';
+import ReDecksLogo from '../components/ReDecksLogo';
 
 interface Props {
   onAuth: () => void;
@@ -96,7 +97,21 @@ const handleBrowserAuth = async () => {
       'location=yes,clearcache=no,clearsessioncache=no'
     );
 
-    browser.on('loadstop').subscribe(async () => {
+    let done = false;
+    let poll: ReturnType<typeof setInterval> | null = null;
+    let loadSub: { unsubscribe: () => void } | null = null;
+    let exitSub: { unsubscribe: () => void } | null = null;
+
+    const cleanup = () => {
+      if (poll) { clearInterval(poll); poll = null; }
+      try { loadSub?.unsubscribe(); } catch { /* ignore */ }
+      try { exitSub?.unsubscribe(); } catch { /* ignore */ }
+    };
+
+    // Пробует достать токен из открытой страницы.
+    // true — вход завершён (токен найден), false — ещё не залогинен / страница грузится.
+    const tryExtract = async (): Promise<boolean> => {
+      if (done) return true;
       try {
         // Критичный путь — cookie (простое выражение, работает стабильно)
         const cookieRes = await browser.executeScript({ code: 'document.cookie' });
@@ -115,8 +130,9 @@ const handleBrowserAuth = async () => {
         }
 
         const token = findToken(cookie, ls);
-        if (!token) return; // ещё не залогинен — ждём следующего loadstop
+        if (!token) return false; // ещё не залогинен
 
+        done = true;
         setToken(token);
         setManualToken(token);
 
@@ -128,11 +144,25 @@ const handleBrowserAuth = async () => {
         }
 
         setMode('manual');
-        browser.close();
+        cleanup();
+        try { browser.close(); } catch { /* ignore */ }
+        return true;
       } catch {
-        // Пока пользователь не залогинен, токена может не быть — это нормально
+        // Страница ещё грузится или токена нет — пробуем позже
+        return false;
       }
-    });
+    };
+
+    // 1) Быстрый путь: как только страница что-то догрузила.
+    loadSub = browser.on('loadstop').subscribe(() => { void tryExtract(); });
+
+    // 2) Надёжный путь: вход в SPA (remanga) НЕ вызывает loadstop — он ставит
+    //    токен фоновым запросом и перерисовывается на клиенте. Поэтому опрашиваем
+    //    страницу по таймеру, пока токен не появится.
+    poll = setInterval(() => { void tryExtract(); }, 1000);
+
+    // 3) Пользователь закрыл окно до входа — прекращаем опрос.
+    exitSub = browser.on('exit').subscribe(() => { cleanup(); });
   } catch {
     setError('Не удалось открыть окно авторизации');
   }
@@ -184,10 +214,7 @@ const handleBrowserAuth = async () => {
 
       <div style={styles.header}>
         <div style={styles.logo}>
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <rect x="2" y="2" width="28" height="28" rx="8" fill="rgba(139,92,246,0.15)" stroke="rgba(139,92,246,0.4)" stroke-width="1"/>
-              <path d="M10 22 V10 H16 C18 10 18 14 16 14 L22 22" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round"/>
-          </svg>
+          <ReDecksLogo size={64} />
         </div>
         <h1 style={styles.title}>ReDecks</h1>
         <p style={styles.subtitle}>авторизация</p>

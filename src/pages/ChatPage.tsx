@@ -2,10 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { useAppStore } from '../store';
 import PageHeader from '../components/PageHeader';
+import UserAvatar from '../components/UserAvatar';
 import {
   getChatRooms,
   getChatMessages,
   getRoomMembers,
+  openPrivateChat,
   pickAvatarUrl,
   resolveMediaUrl,
   roomHasUnread,
@@ -108,7 +110,10 @@ function fmtMsgTime(msg: ChatMessage): string {
 export default function ChatPage({ onInRoomChange }: { onInRoomChange?: (inRoom: boolean) => void }) {
   const token = useAppStore((s) => s.token);
   const myId = Number(useAppStore((s) => s.userId)) || 0;
+  const chatTargetUserId = useAppStore((s) => s.chatTargetUserId);
+  const setChatTargetUserId = useAppStore((s) => s.setChatTargetUserId);
   const [room, setRoom] = useState<ChatRoom | null>(null);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     onInRoomChange?.(room !== null);
@@ -120,11 +125,47 @@ export default function ChatPage({ onInRoomChange }: { onInRoomChange?: (inRoom:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (room) {
-    return <RoomView room={room} token={token} myId={myId} onBack={() => setRoom(null)} />;
-  }
-  return <ListView token={token} onOpen={setRoom} />;
+  // Написать сообщение (тап по аватарке) — создаём приватный чат и открываем его.
+  useEffect(() => {
+    if (chatTargetUserId == null) return;
+    const id = chatTargetUserId;
+    let alive = true;
+    setCreating(true);
+    openPrivateChat(token, id)
+      .then((r) => { if (alive && r && r.id) setRoom(r); })
+      .catch(() => { /* остаёмся в списке */ })
+      .finally(() => { if (alive) setCreating(false); setChatTargetUserId(null); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatTargetUserId]);
+
+  return (
+    <>
+      {room ? (
+        <RoomView room={room} token={token} myId={myId} onBack={() => setRoom(null)} />
+      ) : (
+        <ListView token={token} onOpen={setRoom} />
+      )}
+      {creating && (
+        <div style={creatingOverlay}>
+          <span style={creatingSpinner} />
+          <span style={creatingText}>Открываю чат…</span>
+        </div>
+      )}
+    </>
+  );
 }
+
+const creatingOverlay: React.CSSProperties = {
+  position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(0,0,0,0.55)',
+  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px',
+};
+const creatingSpinner: React.CSSProperties = {
+  width: 22, height: 22, borderRadius: '50%',
+  border: '3px solid rgba(255,255,255,0.25)', borderTopColor: '#fff',
+  animation: 'redecks-spin 0.7s linear infinite',
+};
+const creatingText: React.CSSProperties = { fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', color: '#fff' };
 
 // ─── Список чатов ────────────────────────────────────────────────────────────
 
@@ -166,7 +207,9 @@ function ListView({ token, onOpen }: { token: string; onOpen: (r: ChatRoom) => v
             return (
               <button key={r.id} style={s.roomItem} onClick={() => onOpen(r)}>
                 {cover
-                  ? <img src={cover} alt="" style={s.roomCover} />
+                  ? (isVideo(cover)
+                      ? <video src={cover} style={s.roomCover} autoPlay loop muted playsInline />
+                      : <img src={cover} alt="" style={s.roomCover} />)
                   : <div style={{ ...s.roomCover, ...s.roomCoverEmpty }}>{(r.name || '?')[0]}</div>}
                 <div style={s.roomMid}>
                   <span style={s.roomName}>{r.name}</span>
@@ -513,11 +556,15 @@ function MessageRow({
   return (
     <div style={{ ...s.rowOther, marginTop: groupStart ? 10 : 2 }}>
       <div style={s.avatarCol}>
-        {groupStart && (avatar
-          ? (isVideo(avatar)
-              ? <video src={avatar} style={s.avatar} autoPlay loop muted playsInline />
-              : <img src={avatar} alt="" style={s.avatar} />)
-          : <div style={{ ...s.avatar, ...s.avatarEmpty }}>{(user?.username || '?')[0]}</div>)}
+        {groupStart && (
+          <UserAvatar
+            url={avatar || ''}
+            userId={msg.author_id}
+            fallbackText={user?.username || '?'}
+            size={32}
+            style={{ borderRadius: '50%' }}
+          />
+        )}
       </div>
       <div style={s.otherCol}>
         {groupStart && user?.username && <span style={s.author}>{user.username}</span>}

@@ -1,7 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppStore } from '../store';
 import PageHeader from '../components/PageHeader';
+import BackgroundAccessCard from '../components/BackgroundAccessCard';
 import { requestNotifPermission, syncNotifier, seedExchangeBaseline } from '../utils/notifier';
+import {
+  mediaCacheAvailable,
+  getMediaCacheConfig,
+  setMediaCacheConfig,
+  clearMediaCache,
+  formatBytes,
+  MEDIA_CACHE_MIN_MB,
+  MEDIA_CACHE_MAX_MB,
+} from '../utils/mediaCache';
 
 interface Props {
   onLogout: () => void;
@@ -10,6 +20,51 @@ interface Props {
 export default function AppSettingsPage({ onLogout }: Props) {
   const store = useAppStore();
   const [confirmLogout, setConfirmLogout] = useState(false);
+
+  // ── кэш медиа ──
+  const cacheAvailable = mediaCacheAvailable();
+  const [cacheEnabled, setCacheEnabled] = useState(false);
+  const [cacheLimit, setCacheLimit] = useState('500'); // строка для поля ввода
+  const [cacheUsage, setCacheUsage] = useState(0);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(false);
+
+  useEffect(() => {
+    if (!cacheAvailable) return;
+    let alive = true;
+    getMediaCacheConfig().then((c) => {
+      if (!alive) return;
+      setCacheEnabled(c.enabled);
+      setCacheLimit(String(c.limitMb));
+      setCacheUsage(c.usageBytes);
+    });
+    return () => { alive = false; };
+  }, [cacheAvailable]);
+
+  const toggleCache = async (v: boolean) => {
+    setCacheEnabled(v);
+    const limit = clampLimit(cacheLimit);
+    const c = await setMediaCacheConfig(v, limit);
+    setCacheLimit(String(c.limitMb));
+    setCacheUsage(c.usageBytes);
+  };
+
+  const applyLimit = async () => {
+    setApplying(true);
+    setApplied(false);
+    const limit = clampLimit(cacheLimit);
+    const c = await setMediaCacheConfig(cacheEnabled, limit);
+    setCacheLimit(String(c.limitMb));
+    setCacheUsage(c.usageBytes);
+    setApplying(false);
+    setApplied(true);
+    setTimeout(() => setApplied(false), 1500);
+  };
+
+  const clearCache = async () => {
+    const usage = await clearMediaCache();
+    setCacheUsage(usage);
+  };
 
   const toggleMaster = async (v: boolean) => {
     store.setNotificationsEnabled(v);
@@ -93,6 +148,53 @@ export default function AppSettingsPage({ onLogout }: Props) {
           </div>
         </div>
 
+        <BackgroundAccessCard />
+
+        {cacheAvailable && (
+          <div style={p.card}>
+            <div style={p.cardHeader}><span style={p.cardTitle}>Кэш медиа</span></div>
+            <div style={p.cardBody}>
+              <Toggle
+                label="Кэшировать фото и видео"
+                checked={cacheEnabled}
+                onChange={toggleCache}
+              />
+
+              {cacheEnabled && (
+                <>
+                  <div style={p.divider} />
+                  <div style={p.fieldRow}>
+                    <span style={p.fieldLabel}>Лимит, МБ</span>
+                    <input
+                      style={p.numInput}
+                      value={cacheLimit}
+                      onChange={(e) => setCacheLimit(e.target.value.replace(/[^\d]/g, ''))}
+                      inputMode="numeric"
+                      placeholder="500"
+                    />
+                  </div>
+                  <button
+                    style={{ ...p.applyBtn, ...(applying ? p.applyDisabled : {}) }}
+                    onClick={applyLimit}
+                    disabled={applying}
+                  >
+                    {applying ? 'Применяю…' : applied ? '✓ Применено' : 'Применить'}
+                  </button>
+                  <p style={p.hint}>
+                    От {MEDIA_CACHE_MIN_MB} до {MEDIA_CACHE_MAX_MB} МБ. Занято: {formatBytes(cacheUsage)}.
+                  </p>
+                  <button style={p.clearBtn} onClick={clearCache}>Очистить кэш</button>
+                </>
+              )}
+
+              <p style={p.hint}>
+                Скачанные картинки и видео карт, аватарок и обложек хранятся на устройстве,
+                чтобы не загружать их повторно. При превышении лимита удаляются самые старые.
+              </p>
+            </div>
+          </div>
+        )}
+
         <button style={p.logoutBtn} onClick={() => setConfirmLogout(true)}>
           Выйти из аккаунта
         </button>
@@ -112,6 +214,12 @@ export default function AppSettingsPage({ onLogout }: Props) {
       )}
     </div>
   );
+}
+
+function clampLimit(value: string): number {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n)) return MEDIA_CACHE_MIN_MB;
+  return Math.max(MEDIA_CACHE_MIN_MB, Math.min(MEDIA_CACHE_MAX_MB, n));
 }
 
 function Toggle({
@@ -139,6 +247,25 @@ const p: Record<string, React.CSSProperties> = {
   cardBody: { padding: '6px 14px 14px' },
   divider: { height: '1px', background: 'var(--border)', margin: '2px 0' },
   hint: { fontFamily: 'var(--font-display)', fontSize: '12px', color: 'var(--text3)', lineHeight: 1.5, marginTop: '10px' },
+
+  fieldRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 0' },
+  fieldLabel: { fontFamily: 'var(--font-display)', fontSize: '15px', color: 'var(--text)' },
+  numInput: {
+    width: '110px', textAlign: 'right', background: 'var(--bg3)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: '15px',
+    padding: '10px 12px', outline: 'none',
+  },
+  applyBtn: {
+    width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
+    padding: '12px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', cursor: 'pointer',
+    marginTop: '4px', WebkitTapHighlightColor: 'transparent',
+  },
+  applyDisabled: { opacity: 0.5, cursor: 'not-allowed' },
+  clearBtn: {
+    width: '100%', background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)', padding: '11px', fontFamily: 'var(--font-display)', fontWeight: 600,
+    fontSize: '13px', cursor: 'pointer', marginTop: '10px', WebkitTapHighlightColor: 'transparent',
+  },
 
   toggleRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
   toggleRowChild: { padding: '9px 0' },

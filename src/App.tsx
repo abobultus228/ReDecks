@@ -10,13 +10,14 @@ import ChatPage from './pages/ChatPage';
 import EventPage from './pages/EventPage';
 import AppSettingsPage from './pages/AppSettingsPage';
 import ExchangesPage from './pages/ExchangesPage';
+import ForumPage from './pages/ForumPage';
 import OnboardingPage from './pages/OnboardingPage';
 import { syncNotifier, seedExchangeBaseline } from './utils/notifier';
 import { App as CapacitorApp } from '@capacitor/app';
 import NavBar, { type Tab } from './components/NavBar';
 
 export default function App() {
-  const { token, userId, loadSettings, onboardingDone } = useAppStore();
+  const { token, userId, loadSettings, onboardingDone, exchangeTargetUserId, chatTargetUserId } = useAppStore();
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
 
@@ -38,6 +39,16 @@ export default function App() {
     if (!ready) return;
     setAuthed(Boolean(token && userId));
   }, [ready]);
+
+  // Открыть обмен с пользователем (тап по аватарке на форуме) — переключаем вкладку.
+  useEffect(() => {
+    if (exchangeTargetUserId != null) setTab('exchanges');
+  }, [exchangeTargetUserId]);
+
+  // Написать сообщение пользователю — переключаем на чат.
+  useEffect(() => {
+    if (chatTargetUserId != null) setTab('chat');
+  }, [chatTargetUserId]);
 
   // Запускаем/обновляем фоновый уведомитель, когда вошли,
   // и обновляем базовую линию обменов при входе и при возврате в приложение.
@@ -89,6 +100,7 @@ export default function App() {
         {tab === 'event' && <EventPage />}
         {tab === 'cards' && <CardsPage />}
         {tab === 'exchanges' && <ExchangesPage />}
+        {tab === 'forum' && <ForumPage />}
         {tab === 'settings' && <AppSettingsPage onLogout={() => { setAuthed(false); }} />}
       </div>
       {!(tab === 'chat' && chatInRoom) && <NavBar active={tab} onChange={setTab} />}
