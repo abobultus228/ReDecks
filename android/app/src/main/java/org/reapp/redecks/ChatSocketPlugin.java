@@ -18,8 +18,7 @@ import java.util.Map;
  * (браузерный WebSocket в WebView этого не позволяет, и сервер remanga
  * отклоняет соединение с Origin = https://localhost).
  *
- * Поддерживает одно активное соединение за раз — этого достаточно: в чате
- * открыта одна комната.
+ * Поддерживает одно активное соединение для всех комнат пользователя.
  */
 @CapacitorPlugin(name = "ChatSocket")
 public class ChatSocketPlugin extends Plugin {

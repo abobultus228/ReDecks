@@ -19,6 +19,24 @@ export class StopReasonError extends Error {
 
 // ─── Headers ─────────────────────────────────────────────────────────────────
 
+/** Запасной UA, если navigator недоступен (не в WebView). */
+const FALLBACK_UA =
+  'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+
+/**
+ * User-Agent берём из WebView (его выставляет нативный MainActivity — это реальный
+ * UA устройства, очищенный от признаков вебвью). Так UA не зашит и совпадает с
+ * нативными запросами. Вне WebView (dev/браузер) — запасное значение.
+ */
+function currentUA(): string {
+  try {
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    return ua && ua.length > 0 ? ua : FALLBACK_UA;
+  } catch {
+    return FALLBACK_UA;
+  }
+}
+
 export function makeHeaders(token: string, withContentType = false): HeadersInit {
   const headers: Record<string, string> = {
     accept: '*/*',
@@ -32,8 +50,7 @@ export function makeHeaders(token: string, withContentType = false): HeadersInit
     'sec-fetch-dest': 'empty',
     'sec-fetch-mode': 'cors',
     'sec-fetch-site': 'same-site',
-    'user-agent':
-      'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+    'user-agent': currentUA(),
   };
   if (withContentType) headers['content-type'] = 'application/json';
   return headers;

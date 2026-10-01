@@ -1,0 +1,9 @@
+# Copy this file to gradle.properties locally. Never commit the copy or the keystore.
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+
+# The keystore path is relative to android/app/.
+REDECKS_KEYSTORE=redecks.keystore
+REDECKS_KEY_ALIAS=your-key-alias
+REDECKS_KEY_PASSWORD=your-key-password
+REDECKS_STORE_PASSWORD=your-store-password

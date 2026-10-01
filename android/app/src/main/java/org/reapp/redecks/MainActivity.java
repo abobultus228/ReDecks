@@ -53,9 +53,9 @@ public class MainActivity extends BridgeActivity {
      * remanga.org — то есть для этих запросов куки remanga.org являются
      * СТОРОННИМИ (third-party) и WebView по умолчанию их не отправляет.
      * DDoS-Guard же теперь требует куку __ddg1_, без неё отдаёт челлендж
-     * вместо картинки. Разрешаем сторонние куки и выставляем тот же
-     * десктопный User-Agent, что и у нативных запросов, чтобы отпечаток
-     * совпадал с тем, которому DDoS-Guard выдал __ddg1_.
+     * вместо картинки. Разрешаем сторонние куки и выставляем единый
+     * User-Agent (реальный UA этого WebView), тот же, что и у нативных
+     * запросов, чтобы отпечаток совпадал с тем, которому DDoS-Guard выдал __ddg1_.
      */
     private void configureWebViewForMedia() {
         try {
@@ -67,11 +67,10 @@ public class MainActivity extends BridgeActivity {
             cm.setAcceptThirdPartyCookies(webView, true);
 
             WebSettings settings = webView.getSettings();
-            settings.setUserAgentString(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                + "AppleWebKit/537.36 (KHTML, like Gecko) "
-                + "Chrome/149.0.0.0 Safari/537.36"
-            );
+            // Единый User-Agent приложения: реальный UA этого WebView (очищенный от
+            // признаков вебвью). Он же сохраняется и используется во всех нативных
+            // запросах и фоновых сервисах — единый отпечаток для DDoS-Guard.
+            settings.setUserAgentString(AppUserAgent.computeAndStore(getApplicationContext()));
 
             cm.flush();
 

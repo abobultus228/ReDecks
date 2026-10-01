@@ -182,7 +182,7 @@ const d: Record<string, React.CSSProperties> = {
   confirm: {
     flex: 1,
     background: 'var(--accent)',
-    color: '#fff',
+    color: 'var(--on-accent)',
     border: 'none',
     borderRadius: 'var(--radius-sm)',
     padding: '12px',

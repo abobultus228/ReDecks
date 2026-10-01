@@ -34,3 +34,12 @@ export async function addDailyRead(n: number): Promise<void> {
     /* ignore */
   }
 }
+
+/** Полный ручной сброс сегодняшнего счётчика (если лимит не сбросился сам). */
+export async function resetDailyRead(): Promise<void> {
+  try {
+    await Preferences.remove({ key: KEY });
+  } catch {
+    /* ignore */
+  }
+}

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useAppStore } from '../store';
 import PageHeader from '../components/PageHeader';
 import ConfirmDialog from '../components/ConfirmDialog';
+import UserAvatar from '../components/UserAvatar';
 import ExchangeBuilder, { type BuilderPartner } from './ExchangeBuilder';
 import { toAwakening, CardBadges, AwakenedBoxes, type CardAwakening } from '../components/CardGallery';
 import {
@@ -50,14 +51,19 @@ function isVideoUrl(url: string): boolean {
 // колбэк через UserSide → CardScroller → CardThumb.
 const CardZoomContext = createContext<(cover: string, awakening?: CardAwakening | null) => void>(() => {});
 
-// ─── Обёртка: под-вкладки «Мои обмены» / «Предложить обмен» ────────────────────
+// ─── Обёртка: под-вкладки «Мои обмены» / «Предложить обмен» / «Обмены пользователя» ──
+
+type Sub = 'mine' | 'offer' | 'user';
 
 export default function ExchangesPage() {
   const token = useAppStore((s) => s.token);
   const exchangeTargetUserId = useAppStore((s) => s.exchangeTargetUserId);
   const setExchangeTargetUserId = useAppStore((s) => s.setExchangeTargetUserId);
-  const [sub, setSub] = useState<'mine' | 'offer'>('mine');
+  const viewExchangesUserId = useAppStore((s) => s.viewExchangesUserId);
+  const setViewExchangesUserId = useAppStore((s) => s.setViewExchangesUserId);
+  const [sub, setSub] = useState<Sub>('mine');
   const [partner, setPartner] = useState<BuilderPartner | null>(null);
+  const [viewUser, setViewUser] = useState<BuilderPartner | null>(null);
 
   // Пришли по тапу на аватарку с форума — резолвим профиль и открываем билдер.
   useEffect(() => {
@@ -78,6 +84,26 @@ export default function ExchangesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exchangeTargetUserId]);
 
+  // Пришли по «Посмотреть обмены» с аватарки — резолвим профиль и открываем вкладку «Пользователя».
+  useEffect(() => {
+    if (viewExchangesUserId == null) return;
+    const id = viewExchangesUserId;
+    let alive = true;
+    (async () => {
+      try {
+        const prof = await getUserProfile(token, id);
+        if (alive) setViewUser({ id, name: prof.username || `ID ${id}`, avatarMid: prof.avatarUrl || '' });
+      } catch {
+        if (alive) setViewUser({ id, name: `ID ${id}`, avatarMid: '' });
+      } finally {
+        if (alive) setSub('user');
+        setViewExchangesUserId(null); // намерение израсходовано
+      }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewExchangesUserId]);
+
   // выбран партнёр → полноэкранный билдер (вся страница скроллится, без прибитой шапки)
   if (partner) {
     return (
@@ -93,23 +119,30 @@ export default function ExchangesPage() {
     <div style={w.root}>
       <PageHeader title="Обмены" sub="обмены картами" />
       <div style={w.body}>
-        {sub === 'mine'
-          ? <MyExchangesTab sub={sub} setSub={setSub} />
-          : <OfferSearch sub={sub} setSub={setSub} onPick={setPartner} />}
+        {sub === 'mine' ? (
+          <MyExchangesTab sub={sub} setSub={setSub} />
+        ) : sub === 'offer' ? (
+          <OfferSearch sub={sub} setSub={setSub} onPick={setPartner} />
+        ) : (
+          <UserExchangesTab sub={sub} setSub={setSub} view={viewUser} setView={setViewUser} />
+        )}
       </div>
     </div>
   );
 }
 
 /** Переключатель под-вкладок — рендерится внутри скролла страницы (не прибит). */
-function SubTabs({ sub, setSub }: { sub: 'mine' | 'offer'; setSub: (s: 'mine' | 'offer') => void }) {
+function SubTabs({ sub, setSub }: { sub: Sub; setSub: (s: Sub) => void }) {
   return (
     <div style={w.subTabs}>
       <button style={{ ...w.tab, ...(sub === 'mine' ? w.tabOn : {}) }} onClick={() => setSub('mine')}>
         Мои обмены
       </button>
       <button style={{ ...w.tab, ...(sub === 'offer' ? w.tabOn : {}) }} onClick={() => setSub('offer')}>
-        Предложить обмен
+        Предложить
+      </button>
+      <button style={{ ...w.tab, ...(sub === 'user' ? w.tabOn : {}) }} onClick={() => setSub('user')}>
+        Пользователя
       </button>
     </div>
   );
@@ -117,7 +150,7 @@ function SubTabs({ sub, setSub }: { sub: 'mine' | 'offer'; setSub: (s: 'mine' | 
 
 // ─── Поиск пользователя для обмена ─────────────────────────────────────────────
 
-function OfferSearch({ sub, setSub, onPick }: { sub: 'mine' | 'offer'; setSub: (s: 'mine' | 'offer') => void; onPick: (p: BuilderPartner) => void }) {
+function OfferSearch({ sub, setSub, onPick, ctaLabel = 'Перейти к обмену' }: { sub: Sub; setSub: (s: Sub) => void; onPick: (p: BuilderPartner) => void; ctaLabel?: string }) {
   const token = useAppStore((s) => s.token);
   const [mode, setMode] = useState<'nick' | 'id'>('nick');
   const [query, setQuery] = useState('');
@@ -225,7 +258,7 @@ function OfferSearch({ sub, setSub, onPick }: { sub: 'mine' | 'offer'; setSub: (
             onClick={submitId}
             disabled={!idValue.trim() || resolving}
           >
-            {resolving ? 'Открываю…' : 'Перейти к обмену'}
+            {resolving ? 'Открываю…' : ctaLabel}
           </button>
         </>
       )}
@@ -235,7 +268,7 @@ function OfferSearch({ sub, setSub, onPick }: { sub: 'mine' | 'offer'; setSub: (
 
 // ─── Мои обмены ────────────────────────────────────────────────────────────────
 
-function MyExchangesTab({ sub, setSub }: { sub: 'mine' | 'offer'; setSub: (s: 'mine' | 'offer') => void }) {
+function MyExchangesTab({ sub, setSub }: { sub: Sub; setSub: (s: Sub) => void }) {
   const token = useAppStore((s) => s.token);
   const userId = useAppStore((s) => s.userId);
 
@@ -386,13 +419,142 @@ function CardZoomOverlay({ cover, awakening, onClose }: { cover: string; awakeni
 
 // ─── Один обмен ───────────────────────────────────────────────────────────────
 
+// ─── Обмены пользователя (поиск → просмотр чужих обменов, только чтение) ────────
+
+function UserExchangesTab({ sub, setSub, view, setView }: {
+  sub: Sub;
+  setSub: (s: Sub) => void;
+  view: BuilderPartner | null;
+  setView: (u: BuilderPartner | null) => void;
+}) {
+  if (!view) {
+    return <OfferSearch sub={sub} setSub={setSub} onPick={setView} ctaLabel="Показать обмены" />;
+  }
+  return <UserExchangesList key={view.id} sub={sub} setSub={setSub} user={view} onClear={() => setView(null)} />;
+}
+
+function UserExchangesList({
+  sub, setSub, user, onClear,
+}: {
+  sub: Sub;
+  setSub: (s: Sub) => void;
+  user: BuilderPartner;
+  onClear: () => void;
+}) {
+  const token = useAppStore((s) => s.token);
+
+  const [items, setItems] = useState<Exchange[]>([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const loadingRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const [zoom, setZoom] = useState<{ cover: string; awakening: CardAwakening | null } | null>(null);
+  const openZoom = (cover: string, awakening?: CardAwakening | null) =>
+    setZoom({ cover, awakening: awakening ?? null });
+
+  const loadNext = useCallback(async () => {
+    if (loadingRef.current || !hasMore) return;
+    if (!token) { setError('Нет токена.'); return; }
+    loadingRef.current = true;
+    setLoading(true);
+    setError('');
+    const next = page + 1;
+    try {
+      const { results, hasMore: more } = await getExchanges(token, user.id, next);
+      setItems((prev) => {
+        const seen = new Set(prev.map((e) => e.id));
+        return [...prev, ...results.filter((e) => !seen.has(e.id))];
+      });
+      setPage(next);
+      setHasMore(more);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+      loadingRef.current = false;
+    }
+  }, [token, user.id, page, hasMore]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || loading || !hasMore || error) return;
+    if (el.scrollHeight <= el.clientHeight + 40) void loadNext();
+  }, [items, hasMore, loading, error, loadNext]);
+
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (error) return;
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) void loadNext();
+  };
+
+  const retry = () => { setError(''); void loadNext(); };
+
+  const av = user.avatarMid;
+
+  return (
+    <CardZoomContext.Provider value={openZoom}>
+      <div style={p.root}>
+        <div style={p.scroll} ref={scrollRef} onScroll={onScroll}>
+          <SubTabs sub={sub} setSub={setSub} />
+
+          <div style={w.viewUserRow}>
+            {av
+              ? (isVideoUrl(av)
+                  ? <video src={av} style={w.userAv} autoPlay loop muted playsInline />
+                  : <img src={av} style={w.userAv} alt="" />)
+              : <div style={{ ...w.userAv, ...w.userAvEmpty }}>{(user.name || '?')[0]}</div>}
+            <div style={w.userCol}>
+              <span style={w.userName}>{user.name}</span>
+              <span style={w.userTag}>ID {user.id}</span>
+            </div>
+            <button style={w.changeBtn} onClick={onClear}>Сменить</button>
+          </div>
+
+          {items.map((ex) => (
+            <ExchangeCard key={ex.id} ex={ex} userId={user.id} readOnly />
+          ))}
+
+          {loading && (
+            <div style={p.statusRow}>
+              <span style={p.spinner} />
+              <span style={p.statusText}>Загрузка…</span>
+            </div>
+          )}
+
+          {error && (
+            <div style={p.errorBox}>
+              <span style={p.errorText}>{error}</span>
+              <button style={p.retryBtn} onClick={retry}>Повторить</button>
+            </div>
+          )}
+
+          {!loading && !error && !hasMore && items.length > 0 && (
+            <p style={p.endNote}>Это все обмены.</p>
+          )}
+
+          {!loading && !error && hasMore === false && items.length === 0 && (
+            <p style={p.empty}>У пользователя нет обменов.</p>
+          )}
+        </div>
+      </div>
+
+      {zoom && <CardZoomOverlay cover={zoom.cover} awakening={zoom.awakening} onClose={() => setZoom(null)} />}
+    </CardZoomContext.Provider>
+  );
+}
+
 function ExchangeCard({
-  ex, userId, onCancel, onRespond,
+  ex, userId, onCancel, onRespond, readOnly = false,
 }: {
   ex: Exchange;
   userId: number | string;
-  onCancel: (exchangeId: number) => Promise<void>;
-  onRespond: (exchangeId: number, status: 'accepted' | 'denied', comment: string) => Promise<void>;
+  onCancel?: (exchangeId: number) => Promise<void>;
+  onRespond?: (exchangeId: number, status: 'accepted' | 'denied', comment: string) => Promise<void>;
+  readOnly?: boolean;
 }) {
   const st = statusInfo(ex.status);
   const me = String(userId);
@@ -419,9 +581,9 @@ function ExchangeCard({
       <CommentsSection ex={ex} />
 
       {/* отправитель может отменить свой ещё не отвеченный обмен */}
-      {pending && isCreator && <CancelFooter onConfirm={() => onCancel(ex.id)} />}
+      {!readOnly && pending && isCreator && onCancel && <CancelFooter onConfirm={() => onCancel(ex.id)} />}
       {/* получатель может принять или отклонить */}
-      {pending && isPartner && (
+      {!readOnly && pending && isPartner && onRespond && (
         <RespondFooter
           onAccept={(c) => onRespond(ex.id, 'accepted', c)}
           onDeny={(c) => onRespond(ex.id, 'denied', c)}
@@ -604,7 +766,14 @@ function UserSide({ user, cards }: { user: ExchangeUser; cards: ExchangeCardItem
   return (
     <div style={p.side}>
       <div style={p.userRow}>
-        <Avatar url={avatar} premium={user?.is_premium} />
+        <UserAvatar
+          url={avatar}
+          userId={user?.id ?? null}
+          size={28}
+          radius={14}
+          premium={user?.is_premium}
+          fallbackText={user?.username}
+        />
         <span style={p.userName}>{user?.username || '—'}</span>
         <span style={p.cardCount}>{pluralCards(cards.length)}</span>
       </div>
@@ -1129,10 +1298,12 @@ const w: Record<string, React.CSSProperties> = {
   subTabs: { display: 'flex', gap: '6px' },
   tab: {
     flex: 1, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-    color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px',
-    padding: '10px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+    color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '12px',
+    padding: '10px 6px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', whiteSpace: 'nowrap',
   },
-  tabOn: { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' },
+  tabOn: { background: 'var(--accent)', color: 'var(--on-accent)', borderColor: 'var(--accent)' },
+  viewUserRow: { display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 12px' },
+  changeBtn: { marginLeft: 'auto', flexShrink: 0, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '12px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
   body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
 
   offerRoot: { flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' },
@@ -1142,7 +1313,7 @@ const w: Record<string, React.CSSProperties> = {
     padding: '9px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px', cursor: 'pointer',
     WebkitTapHighlightColor: 'transparent',
   },
-  modeOn: { background: 'var(--accent)', color: '#fff' },
+  modeOn: { background: 'var(--accent)', color: 'var(--on-accent)' },
   input: {
     background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
     color: 'var(--text)', fontFamily: 'var(--font-display)', fontSize: '14px', padding: '12px', outline: 'none',
@@ -1163,7 +1334,7 @@ const w: Record<string, React.CSSProperties> = {
   userTag: { fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
 
   idBtn: {
-    background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
+    background: 'var(--accent)', color: 'var(--on-accent)', border: 'none', borderRadius: 'var(--radius-sm)',
     padding: '12px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', cursor: 'pointer',
     WebkitTapHighlightColor: 'transparent',
   },

@@ -294,7 +294,7 @@ const s: Record<string, React.CSSProperties> = {
   thumb: { width: '20px', height: '20px', borderRadius: '50%', background: '#fff', position: 'absolute', top: '2px', left: 0, transition: 'transform 0.15s' },
 
   btnPrimary: {
-    width: '100%', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', color: '#fff',
+    width: '100%', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', color: 'var(--on-accent)',
     background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '12px',
     cursor: 'pointer', WebkitTapHighlightColor: 'transparent', marginTop: '4px',
   },

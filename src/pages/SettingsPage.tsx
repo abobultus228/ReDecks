@@ -263,7 +263,7 @@ function SelectList<T>({
             key={String(id)}
             style={{
               ...selectStyles.item,
-              background: active ? 'rgba(139,92,246,0.1)' : 'var(--bg3)',
+              background: active ? 'var(--accent-soft)' : 'var(--bg3)',
               border: `1px solid ${active ? 'var(--border-active)' : 'var(--border)'}`,
             }}
             onClick={() => onSelect(id)}
@@ -294,7 +294,7 @@ function RuleRow({ label, opts, value, onChange }: {
             key={opt.value}
             style={{
               ...ruleStyles.opt,
-              background: value === opt.value ? 'rgba(139,92,246,0.15)' : 'var(--bg3)',
+              background: value === opt.value ? 'var(--accent-soft-strong)' : 'var(--bg3)',
               border: `1px solid ${value === opt.value ? 'var(--border-active)' : 'var(--border)'}`,
               color: value === opt.value ? 'var(--text)' : 'var(--text2)',
             }}
@@ -413,7 +413,7 @@ const styles: Record<string, React.CSSProperties> = {
   startBtn: {
     width: '100%',
     background: 'var(--accent)',
-    color: '#fff',
+    color: 'var(--on-accent)',
     border: 'none',
     borderRadius: 'var(--radius-sm)',
     padding: '16px',
@@ -466,7 +466,7 @@ const sectionStyles: Record<string, React.CSSProperties> = {
     fontFamily: 'var(--font-mono)',
     fontSize: '11px',
     color: 'var(--accent)',
-    background: 'rgba(139,92,246,0.1)',
+    background: 'var(--accent-soft)',
     border: '1px solid var(--border-active)',
     borderRadius: '6px',
     padding: '4px 10px',

@@ -41,7 +41,7 @@ const w: Record<string, React.CSSProperties> = {
     color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px',
     padding: '10px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },
-  tabOn: { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' },
+  tabOn: { background: 'var(--accent)', color: 'var(--on-accent)', borderColor: 'var(--accent)' },
   body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
 };
 
@@ -391,7 +391,7 @@ const p: Record<string, React.CSSProperties> = {
     background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '6px',
     padding: '4px 10px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },
-  filterToggleOn: { color: 'var(--accent)', background: 'rgba(139,92,246,0.12)', border: '1px solid var(--border-active)' },
+  filterToggleOn: { color: 'var(--accent)', background: 'var(--accent-soft)', border: '1px solid var(--border-active)' },
   fromToRow: { display: 'flex', gap: '10px' },
   numField: { flex: 1, display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '8px 12px' },
   numLabel: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text3)' },

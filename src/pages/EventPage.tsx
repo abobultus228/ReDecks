@@ -255,7 +255,7 @@ const p: Record<string, React.CSSProperties> = {
   inputInvalid: { borderColor: 'var(--red)' },
 
   primaryBtn: {
-    width: '100%', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px', color: '#fff',
+    width: '100%', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px', color: 'var(--on-accent)',
     background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '14px',
     cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },

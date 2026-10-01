@@ -236,7 +236,7 @@ const cs: Record<string, React.CSSProperties> = {
   },
   formRow: { display: 'flex', justifyContent: 'flex-end', gap: '8px' },
   sendBtn: {
-    background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
+    background: 'var(--accent)', color: 'var(--on-accent)', border: 'none', borderRadius: 'var(--radius-sm)',
     padding: '8px 16px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px',
     cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },

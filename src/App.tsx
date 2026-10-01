@@ -17,13 +17,17 @@ import { App as CapacitorApp } from '@capacitor/app';
 import NavBar, { type Tab } from './components/NavBar';
 
 export default function App() {
-  const { token, userId, loadSettings, onboardingDone, exchangeTargetUserId, chatTargetUserId } = useAppStore();
+  const { token, userId, theme, loadSettings, onboardingDone, exchangeTargetUserId, viewExchangesUserId, chatTargetUserId } = useAppStore();
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
 
   const [tab, setTab] = useState<Tab>('decks');
   const [decksView, setDecksView] = useState<'settings' | 'process'>('settings');
   const [chatInRoom, setChatInRoom] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   // Полноэкранный режим: скрываем шторку уведомлений и панель навигации
   useEffect(() => {
@@ -44,6 +48,11 @@ export default function App() {
   useEffect(() => {
     if (exchangeTargetUserId != null) setTab('exchanges');
   }, [exchangeTargetUserId]);
+
+  // Посмотреть обмены пользователя (тап по аватарке) — переключаем на обмены.
+  useEffect(() => {
+    if (viewExchangesUserId != null) setTab('exchanges');
+  }, [viewExchangesUserId]);
 
   // Написать сообщение пользователю — переключаем на чат.
   useEffect(() => {

@@ -147,7 +147,7 @@ function ManualChoiceOverlay({ payload }: { payload: ManualChoicePayload }) {
                 style={{
                   ...cardImageStyle.root,
                   borderColor: selected ? 'var(--accent)' : 'var(--border)',
-                  boxShadow: selected ? '0 0 0 2px rgba(139,92,246,0.25)' : 'none',
+                  boxShadow: selected ? '0 0 0 2px var(--accent-glow)' : 'none',
                 }}
                 onClick={() => setSelectedCardId(id)}
               >
@@ -355,7 +355,7 @@ const overlay: Record<string, React.CSSProperties> = {
     
   confirmBtn: {
       background: 'var(--accent)',
-      color: '#fff',
+      color: 'var(--on-accent)',
       border: 'none',
       borderRadius: '10px',
       fontFamily: 'var(--font-display)',

@@ -148,7 +148,7 @@ const s: Record<string, React.CSSProperties> = {
     WebkitTapHighlightColor: 'transparent',
   },
   tabActive: {
-    background: 'rgba(139,92,246,0.12)',
+    background: 'var(--accent-soft)',
     border: '1px solid var(--border-active)',
     color: 'var(--text)',
   },
@@ -167,7 +167,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   goBtn: {
     background: 'var(--accent)',
-    color: '#fff',
+    color: 'var(--on-accent)',
     border: 'none',
     borderRadius: 'var(--radius-sm)',
     padding: '0 16px',

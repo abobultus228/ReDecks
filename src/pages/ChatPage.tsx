@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { useAppStore } from '../store';
 import PageHeader from '../components/PageHeader';
@@ -16,11 +16,19 @@ import {
   type ChatRoom,
   type ChatMessage,
   type ChatUser,
+  type ChatWsEvent,
 } from '../api/extra';
 
-const isVideo = (u: string) => /\.(webm|mp4)(\?|#|$)/i.test(u);
 import { openChatSocket, type ChatSocketHandle } from '../utils/chatSocket';
 import { syncNotifier } from '../utils/notifier';
+
+const isVideo = (u: string) => /\.(webm|mp4)(\?|#|$)/i.test(u);
+
+type OutgoingChatEvent =
+  | { type: 'read'; room_id: number }
+  | { type: 'message'; room_id: number; text: string; local_uuid: string };
+type SubscribeChatEvents = (listener: (event: ChatWsEvent) => void) => () => void;
+type SendChatEvent = (event: OutgoingChatEvent) => boolean;
 
 function genUuid(): string {
   const c = globalThis.crypto as Crypto | undefined;
@@ -114,6 +122,77 @@ export default function ChatPage({ onInRoomChange }: { onInRoomChange?: (inRoom:
   const setChatTargetUserId = useAppStore((s) => s.setChatTargetUserId);
   const [room, setRoom] = useState<ChatRoom | null>(null);
   const [creating, setCreating] = useState(false);
+  const [wsReady, setWsReady] = useState(false);
+  const socketRef = useRef<ChatSocketHandle | null>(null);
+  const socketReadyRef = useRef(false);
+  const eventListeners = useRef(new Set<(event: ChatWsEvent) => void>());
+
+  const sendSocket = useCallback<SendChatEvent>((event) => {
+    if (!socketReadyRef.current || !socketRef.current) return false;
+    socketRef.current.send(JSON.stringify(event));
+    return true;
+  }, []);
+
+  const subscribeEvents = useCallback<SubscribeChatEvents>((listener) => {
+    eventListeners.current.add(listener);
+    return () => { eventListeners.current.delete(listener); };
+  }, []);
+
+  // Один сокет на вкладку чата: переключение комнат не создаёт новое соединение.
+  useEffect(() => {
+    let disposed = false;
+    let handle: ChatSocketHandle | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryMs = 1000;
+
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimer) return;
+      socketReadyRef.current = false;
+      setWsReady(false);
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        const previous = handle;
+        handle = null;
+        socketRef.current = null;
+        previous?.close();
+        connect();
+      }, retryMs);
+      retryMs = Math.min(retryMs * 2, 30000);
+    };
+
+    const connect = () => {
+      const current = openChatSocket(CHAT_WS_URL(token), {
+        onOpen: () => {
+          if (disposed || handle !== current) return;
+          retryMs = 1000;
+          socketReadyRef.current = true;
+          setWsReady(true);
+        },
+        onMessage: (raw) => {
+          if (disposed || handle !== current) return;
+          let parsed: { type?: string; event?: ChatWsEvent };
+          try { parsed = JSON.parse(raw); } catch { return; }
+          const event = parsed?.event;
+          if (parsed?.type !== 'room_event' || !event || event.discriminator !== 'message') return;
+          if (typeof event.room_id !== 'number' || typeof event.uuid !== 'string') return;
+          eventListeners.current.forEach((listener) => listener(event));
+        },
+        onClose: () => { if (handle === current) scheduleReconnect(); },
+        onError: () => { if (handle === current) scheduleReconnect(); },
+      });
+      handle = current;
+      socketRef.current = current;
+    };
+
+    connect();
+    return () => {
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socketReadyRef.current = false;
+      socketRef.current = null;
+      handle?.close();
+    };
+  }, [token]);
 
   useEffect(() => {
     onInRoomChange?.(room !== null);
@@ -142,9 +221,10 @@ export default function ChatPage({ onInRoomChange }: { onInRoomChange?: (inRoom:
   return (
     <>
       {room ? (
-        <RoomView room={room} token={token} myId={myId} onBack={() => setRoom(null)} />
+        <RoomView room={room} token={token} myId={myId} onBack={() => setRoom(null)}
+          wsReady={wsReady} sendSocket={sendSocket} subscribeEvents={subscribeEvents} />
       ) : (
-        <ListView token={token} onOpen={setRoom} />
+        <ListView token={token} onOpen={setRoom} subscribeEvents={subscribeEvents} />
       )}
       {creating && (
         <div style={creatingOverlay}>
@@ -169,25 +249,46 @@ const creatingText: React.CSSProperties = { fontFamily: 'var(--font-display)', f
 
 // ─── Список чатов ────────────────────────────────────────────────────────────
 
-function ListView({ token, onOpen }: { token: string; onOpen: (r: ChatRoom) => void }) {
+function ListView({ token, onOpen, subscribeEvents }: {
+  token: string;
+  onOpen: (r: ChatRoom) => void;
+  subscribeEvents: SubscribeChatEvents;
+}) {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let alive = true;
-    (async () => {
+    let requestId = 0;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = async () => {
+      const currentRequest = ++requestId;
       try {
         const list = await getChatRooms(token);
-        if (alive) setRooms(list);
+        if (alive && currentRequest === requestId) {
+          setRooms(list);
+          setError('');
+        }
       } catch (e) {
-        if (alive) setError(e instanceof Error ? e.message : String(e));
+        if (alive && currentRequest === requestId) {
+          setError(e instanceof Error ? e.message : String(e));
+        }
       } finally {
         if (alive) setLoading(false);
       }
-    })();
-    return () => { alive = false; };
-  }, [token]);
+    };
+    void refresh();
+    const unsubscribe = subscribeEvents(() => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => { void refresh(); }, 250);
+    });
+    return () => {
+      alive = false;
+      unsubscribe();
+      if (refreshTimer) clearTimeout(refreshTimer);
+    };
+  }, [token, subscribeEvents]);
 
   return (
     <div style={s.root}>
@@ -233,15 +334,22 @@ function ListView({ token, onOpen }: { token: string; onOpen: (r: ChatRoom) => v
 const PAGE = 50;
 
 function RoomView({
-  room, token, myId, onBack,
-}: { room: ChatRoom; token: string; myId: number; onBack: () => void }) {
+  room, token, myId, onBack, wsReady, sendSocket, subscribeEvents,
+}: {
+  room: ChatRoom;
+  token: string;
+  myId: number;
+  onBack: () => void;
+  wsReady: boolean;
+  sendSocket: SendChatEvent;
+  subscribeEvents: SubscribeChatEvents;
+}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]); // старые сверху
   const [loading, setLoading] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState('');
   const [, setAvatarVer] = useState(0);
-  const [wsReady, setWsReady] = useState(false);
   const editableRef = useRef<HTMLDivElement>(null);
 
   const avatars = useRef<Map<number, ChatUser>>(new Map());
@@ -249,7 +357,6 @@ function RoomView({
   const pendingPrependHeight = useRef<number | null>(null);
   const didInitScroll = useRef(false);
   const scrollBottomNext = useRef(false);
-  const socketRef = useRef<ChatSocketHandle | null>(null);
 
   const muted = useAppStore((st) => st.mutedRoomIds.includes(room.id));
   const toggleMutedRoom = useAppStore((st) => st.toggleMutedRoom);
@@ -366,79 +473,63 @@ function RoomView({
     }
   };
 
-  // WebSocket: подключение, отметка «прочитано», живой приём сообщений
+  // Слушаем события только открытой комнаты; соединение общее для всей вкладки.
   useEffect(() => {
-    const handle = openChatSocket(CHAT_WS_URL(token), {
-      onOpen: () => {
-        setWsReady(true);
-        handle.send(JSON.stringify({ type: 'read', room_id: room.id }));
-      },
-      onMessage: (raw) => {
-        let parsed: any;
-        try { parsed = JSON.parse(raw); } catch { return; }
-        if (parsed?.type !== 'room_event') return;
-        const e = parsed.event;
-        if (!e || e.discriminator !== 'message' || e.room_id !== room.id) return;
-        const msg = wsEventToMessage(e);
-        pushMessage(msg);
-        // мы в комнате и видим сообщение — сразу двигаем «прочитано»
-        socketRef.current?.send(JSON.stringify({ type: 'read', room_id: room.id }));
-      },
-      onClose: () => setWsReady(false),
-      onError: () => setWsReady(false),
+    const unsubscribe = subscribeEvents((event) => {
+      if (event.room_id !== room.id) return;
+      pushMessage(wsEventToMessage(event));
+      sendSocket({ type: 'read', room_id: room.id });
     });
-    socketRef.current = handle;
-
     return () => {
-      setWsReady(false);
-      // финальная отметка «прочитано» перед закрытием — на случай своих
-      // сообщений и сообщений, пришедших перед уходом
-      try { handle.send(JSON.stringify({ type: 'read', room_id: room.id })); } catch { /* ignore */ }
-      handle.close();
-      socketRef.current = null;
+      unsubscribe();
+      sendSocket({ type: 'read', room_id: room.id });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room.id, token]);
+  }, [room.id, subscribeEvents, sendSocket]);
 
-    const send = () => {
-      const ws = socketRef.current;
-      const el = editableRef.current;
-      const value = el?.innerText.trim() ?? '';
+  // При входе в комнату и после переподключения отмечаем её прочитанной.
+  useEffect(() => {
+    if (wsReady) sendSocket({ type: 'read', room_id: room.id });
+  }, [room.id, wsReady, sendSocket]);
 
-      if (!value || !wsReady || !ws) return;
+  const send = () => {
+    const el = editableRef.current;
+    const value = el?.innerText.trim() ?? '';
 
-      const localUuid = genUuid();
+    if (!value || !wsReady) return;
 
-      ws.send(JSON.stringify({
-        type: 'message',
-        room_id: room.id,
-        text: value,
-        local_uuid: localUuid,
-      }));
+    const localUuid = genUuid();
 
-      // своё сообщение тоже должно стать «прочитанным», иначе last_read_dt
-      // останется временем входа и комната повиснет непрочитанной
-      ws.send(JSON.stringify({ type: 'read', room_id: room.id }));
+    if (!sendSocket({
+      type: 'message',
+      room_id: room.id,
+      text: value,
+      local_uuid: localUuid,
+    })) return;
 
-      const optimistic: ChatMessage = {
-        uuid: localUuid,
-        type: 'message',
-        room_id: room.id,
-        author_id: myId,
-        data: { text: value },
-        created_at: new Date().toISOString(),
-        is_deleted: false,
-        localUuid,
-        pending: true,
-      };
+    // своё сообщение тоже должно стать «прочитанным», иначе last_read_dt
+    // останется временем входа и комната повиснет непрочитанной
+    sendSocket({ type: 'read', room_id: room.id });
 
-      pushMessage(optimistic, true);
-
-      if (el) {
-        el.innerText = '';
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+    const optimistic: ChatMessage = {
+      uuid: localUuid,
+      type: 'message',
+      room_id: room.id,
+      author_id: myId,
+      data: { text: value },
+      created_at: new Date().toISOString(),
+      is_deleted: false,
+      localUuid,
+      pending: true,
     };
+
+    pushMessage(optimistic, true);
+
+    if (el) {
+      el.innerText = '';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
 
   const onScroll = () => {
     const el = scrollRef.current;

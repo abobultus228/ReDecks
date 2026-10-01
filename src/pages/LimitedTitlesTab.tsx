@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { searchLimitedTitles, type LimitedTitle } from '../utils/limitedTitles';
-import LimitedRun from './LimitedRun';
+import ChapterRun from './ChapterRun';
 
 export default function LimitedTitlesTab() {
   const [query, setQuery] = useState('');
@@ -8,7 +8,7 @@ export default function LimitedTitlesTab() {
   const results = searchLimitedTitles(query);
 
   if (selected) {
-    return <LimitedRun title={selected} onBack={() => setSelected(null)} />;
+    return <ChapterRun title={selected} onBack={() => setSelected(null)} />;
   }
 
   return (
@@ -32,7 +32,7 @@ export default function LimitedTitlesTab() {
           results.map((t) => (
             <button key={t.branchId} style={s.item} onClick={() => setSelected(t)}>
               <span style={s.itemName}>{t.name}</span>
-              <span style={s.itemDir}>{t.dir}</span>
+              {t.dir && <span style={s.itemDir}>{t.dir}</span>}
             </button>
           ))
         )}

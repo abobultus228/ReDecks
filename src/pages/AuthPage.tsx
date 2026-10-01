@@ -311,7 +311,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: '300px',
     height: '300px',
     borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(139,92,246,0.12) 0%, transparent 70%)',
+    background: 'radial-gradient(circle, var(--accent-soft) 0%, transparent 70%)',
     pointerEvents: 'none',
   },
   header: {
@@ -356,7 +356,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     gap: '8px',
     background: 'var(--accent)',
-    color: '#fff',
+    color: 'var(--on-accent)',
     border: 'none',
     borderRadius: 'var(--radius-sm)',
     padding: '14px 20px',
@@ -436,7 +436,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   code: {
     fontFamily: 'var(--font-mono)',
-    background: 'rgba(139,92,246,0.15)',
+    background: 'var(--accent-soft-strong)',
     color: 'var(--accent)',
     padding: '1px 6px',
     borderRadius: '4px',

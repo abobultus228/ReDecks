@@ -191,7 +191,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   tileOn: {
     color: 'var(--accent)',
-    background: 'rgba(139,92,246,0.12)',
+    background: 'var(--accent-soft)',
     border: '1px solid var(--border-active)',
   },
   label: {

@@ -1,34 +1,34 @@
 import { useState } from 'react';
 import PageHeader from '../components/PageHeader';
-import ChaptersResetTab from './ChaptersResetTab';
+import RegularTitlesTab from './RegularTitlesTab';
 import LimitedTitlesTab from './LimitedTitlesTab';
 
-type Tab = 'reset' | 'limited';
+type Tab = 'regular' | 'limited';
 
 export default function ChaptersPage() {
-  const [tab, setTab] = useState<Tab>('reset');
+  const [tab, setTab] = useState<Tab>('regular');
 
   return (
     <div style={w.root}>
-      <PageHeader title="Главы" sub="работа с прочтением" />
+      <PageHeader title="Главы" sub="чтение тайтлов" />
 
       <div style={w.tabBar}>
         <button
-          style={{ ...w.tab, ...(tab === 'reset' ? w.tabOn : {}) }}
-          onClick={() => setTab('reset')}
+          style={{ ...w.tab, ...(tab === 'regular' ? w.tabOn : {}) }}
+          onClick={() => setTab('regular')}
         >
-          Сброс глав
+          Обычные
         </button>
         <button
           style={{ ...w.tab, ...(tab === 'limited' ? w.tabOn : {}) }}
           onClick={() => setTab('limited')}
         >
-          Лимит. тайтлы
+          Лимитированные
         </button>
       </div>
 
       <div style={w.body}>
-        {tab === 'reset' ? <ChaptersResetTab /> : <LimitedTitlesTab />}
+        {tab === 'regular' ? <RegularTitlesTab /> : <LimitedTitlesTab />}
       </div>
     </div>
   );
@@ -50,6 +50,6 @@ const w: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     WebkitTapHighlightColor: 'transparent',
   },
-  tabOn: { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' },
+  tabOn: { background: 'var(--accent)', color: 'var(--on-accent)', borderColor: 'var(--accent)' },
   body: { flex: 1, minHeight: 0 },
 };

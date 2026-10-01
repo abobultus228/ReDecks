@@ -44,6 +44,6 @@ const w: Record<string, React.CSSProperties> = {
     color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '12px',
     padding: '8px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },
-  tabOn: { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' },
+  tabOn: { background: 'var(--accent)', color: 'var(--on-accent)', borderColor: 'var(--accent)' },
   body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
 };

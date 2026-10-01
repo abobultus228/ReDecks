@@ -11,6 +11,9 @@
   --accent: #8b5cf6;
   --accent2: #6d28d9;
   --accent-glow: rgba(139,92,246,0.25);
+  --accent-soft: rgba(139,92,246,0.12);
+  --accent-soft-strong: rgba(139,92,246,0.15);
+  --on-accent: #fff;
   --red: #ef4444;
   --green: #22c55e;
   --yellow: #eab308;
@@ -22,6 +25,33 @@
   --font-display: 'Syne', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
+
+:root[data-theme='green'] {
+  --bg: #030905;
+  --bg2: #061109;
+  --bg3: #0a1a10;
+  --surface: #0c1f13;
+  --surface2: #112a1a;
+  --border: rgba(153,255,180,0.09);
+  --border-active: rgba(66,255,125,0.68);
+  --accent: #168b4a;
+  --accent2: #0c6035;
+  --accent-glow: rgba(49,196,104,0.22);
+  --accent-soft: rgba(40,151,80,0.12);
+  --accent-soft-strong: rgba(40,151,80,0.18);
+  --on-accent: #ffffff;
+  --text: #e6f2e9;
+  --text2: #9cbba4;
+  --text3: #63866c;
+}
+
+:root[data-theme='green'] svg[aria-label='ReDecks'] path[fill='#8b5cf6'] {
+  fill: #168b4a;
+}
+
+:root[data-theme='green'] #rdl-gp stop:nth-child(1) { stop-color: #238f50; }
+:root[data-theme='green'] #rdl-gp stop:nth-child(2) { stop-color: #168b4a; }
+:root[data-theme='green'] #rdl-gp stop:nth-child(3) { stop-color: #0c6035; }
 
 *, *::before, *::after {
   box-sizing: border-box;

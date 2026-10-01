@@ -69,6 +69,7 @@ export interface SavedSettings {
   vibrationEnabled?: boolean;
   mutedRoomIds?: number[];
   onboardingDone?: boolean;
+  theme?: 'purple' | 'green';
 }
 
 // ─── Process ─────────────────────────────────────────────────────────────────

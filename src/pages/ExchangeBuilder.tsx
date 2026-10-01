@@ -384,7 +384,7 @@ const st: Record<string, React.CSSProperties> = {
   avatarEmpty: { border: '1px solid var(--border)' },
 
   sendBtn: {
-    flexShrink: 0, background: 'var(--accent)', color: '#fff', border: 'none',
+    flexShrink: 0, background: 'var(--accent)', color: 'var(--on-accent)', border: 'none',
     borderRadius: 'var(--radius-sm)', padding: '11px 14px',
     fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px',
     cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
@@ -422,7 +422,7 @@ const st: Record<string, React.CSSProperties> = {
     cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
     WebkitTapHighlightColor: 'transparent',
   },
-  toggleOn: { background: 'var(--accent)', color: '#fff' },
+  toggleOn: { background: 'var(--accent)', color: 'var(--on-accent)' },
 
   filters: { display: 'flex', gap: '8px' },
   filterStub: {
@@ -446,5 +446,5 @@ const st: Record<string, React.CSSProperties> = {
   modalError: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--red)', margin: '0 0 10px' },
   modalRow: { display: 'flex', gap: '10px' },
   modalCancel: { flex: 1, background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '11px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px', cursor: 'pointer' },
-  modalConfirm: { flex: 1, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '11px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px', cursor: 'pointer' },
+  modalConfirm: { flex: 1, background: 'var(--accent)', color: 'var(--on-accent)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '11px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px', cursor: 'pointer' },
 };

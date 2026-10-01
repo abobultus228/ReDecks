@@ -46,21 +46,49 @@ function decodeEntities(s: string): string {
   return ta.value;
 }
 
-/** Превращает убогий HTML в человекочитаемый текст с переносами. */
-export function htmlToText(html: string): string {
-  if (!html) return '';
-  let s = html;
-  s = s.replace(/<\s*br\s*\/?>/gi, '\n');
-  s = s.replace(/<\/\s*(p|div|li|h[1-6])\s*>/gi, '\n');
-  s = s.replace(/<[^>]+>/g, '');
-  s = decodeEntities(s);
-  s = s.replace(/\{"entity":[^}]*\}/g, ''); // убираем встроенный код карточек/каруселей
-  return s.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+/** Превращает HTML форума (в том числе экранированный API) в обычный текст. */
+export function htmlToText(raw: string): string {
+  if (!raw) return '';
+
+  let html = raw;
+  // Посты и комментарии могут содержать один или два слоя экранирования тегов.
+  for (let i = 0; i < 2 && /&(?:amp;)*lt;\s*\/?\s*[a-z]/i.test(html); i++) {
+    html = decodeEntities(html);
+  }
+
+  // Не вставляем серверный HTML в интерфейс: разбираем его только для извлечения текста.
+  const body = new DOMParser().parseFromString(html, 'text/html').body;
+  const parts: string[] = [];
+  const blockTags = new Set(['p', 'div', 'li', 'blockquote', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+
+  function appendText(node: Node): void {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parts.push(node.textContent || '');
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+    const element = node as Element;
+    const tag = element.tagName.toLowerCase();
+    // Карты уже приходят в attachments и отображаются отдельно.
+    if (tag === 'renode' || tag === 'script' || tag === 'style' || tag === 'template') return;
+    if (tag === 'br') {
+      parts.push('\n');
+      return;
+    }
+    if (blockTags.has(tag)) parts.push('\n');
+    element.childNodes.forEach(appendText);
+    if (blockTags.has(tag)) parts.push('\n');
+  }
+
+  body.childNodes.forEach(appendText);
+  return parts.join('').replace(/\u00a0/g, ' ').replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-/** Текст комментария приходит ДВАЖДЫ экранированным (&lt;p&gt;…): декодируем и чистим. */
+/** Комментарии проходят ту же очистку, что и посты. */
 export function htmlCommentToText(raw: string): string {
-  return htmlToText(decodeEntities(raw || ''));
+  return htmlToText(raw);
 }
 
 /** Экранирует пользовательский ввод, чтобы не поломать HTML. */

@@ -539,7 +539,7 @@ const s: Record<string, React.CSSProperties> = {
     color: 'var(--text)',
     WebkitTapHighlightColor: 'transparent',
   },
-  tagRowOn: { background: 'rgba(139,92,246,0.12)' },
+  tagRowOn: { background: 'var(--accent-soft)' },
   check: {
     width: '16px',
     height: '16px',
@@ -550,7 +550,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: '11px',
-    color: '#fff',
+    color: 'var(--on-accent)',
     lineHeight: 1,
   },
   checkOn: { background: 'var(--accent)', borderColor: 'var(--accent)' },

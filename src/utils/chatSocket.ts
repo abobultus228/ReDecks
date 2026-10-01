@@ -22,6 +22,13 @@ interface ChatSocketNativePlugin {
 const Native = registerPlugin<ChatSocketNativePlugin>('ChatSocket');
 
 const ORIGIN = 'https://remanga.org';
+// Нативный плагин держит один WebSocket. Упорядочиваем закрытие и повторное
+// подключение, чтобы старый close не закрыл уже созданное новое соединение.
+let nativeLifecycle: Promise<void> = Promise.resolve();
+
+function queueNative(task: () => Promise<void>): void {
+  nativeLifecycle = nativeLifecycle.catch(() => {}).then(task);
+}
 
 export interface SocketCallbacks {
   onOpen?: () => void;
@@ -43,25 +50,43 @@ export function openChatSocket(url: string, cb: SocketCallbacks): ChatSocketHand
     const listeners: { remove: () => void }[] = [];
     let closed = false;
 
-    (async () => {
+    queueNative(async () => {
       try {
-        listeners.push(await Native.addListener('open', () => cb.onOpen?.()));
-        listeners.push(await Native.addListener('message', (d) => cb.onMessage?.(d?.data ?? '')));
-        listeners.push(await Native.addListener('close', () => cb.onClose?.()));
-        listeners.push(await Native.addListener('error', (d) => cb.onError?.(d?.message)));
+        const add = async (
+          event: 'open' | 'message' | 'close' | 'error',
+          listener: (data: { data?: string; message?: string }) => void,
+        ) => {
+          const subscription = await Native.addListener(event, listener);
+          if (closed) {
+            subscription.remove();
+            return false;
+          }
+          listeners.push(subscription);
+          return true;
+        };
+        if (!await add('open', () => cb.onOpen?.())) return;
+        if (!await add('message', (d) => cb.onMessage?.(d?.data ?? ''))) return;
+        if (!await add('close', () => cb.onClose?.())) return;
+        if (!await add('error', (d) => cb.onError?.(d?.message))) return;
+        if (closed) return;
         await Native.connect({ url, origin: ORIGIN });
       } catch (e) {
-        cb.onError?.(e instanceof Error ? e.message : String(e));
+        if (!closed) cb.onError?.(e instanceof Error ? e.message : String(e));
       }
-    })();
+    });
 
     return {
-      send: (data) => { void Native.send({ data }); },
+      send: (data) => {
+        if (closed) return;
+        void Native.send({ data }).catch((e) => {
+          if (!closed) cb.onError?.(e instanceof Error ? e.message : String(e));
+        });
+      },
       close: () => {
         if (closed) return;
         closed = true;
         listeners.forEach((l) => l.remove());
-        void Native.close();
+        queueNative(async () => { await Native.close(); });
       },
     };
   }

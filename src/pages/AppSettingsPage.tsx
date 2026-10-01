@@ -12,6 +12,7 @@ import {
   MEDIA_CACHE_MIN_MB,
   MEDIA_CACHE_MAX_MB,
 } from '../utils/mediaCache';
+import { refreshDdosGuard, ddosGuardAvailable } from '../utils/ddosGuard';
 
 interface Props {
   onLogout: () => void;
@@ -20,6 +21,30 @@ interface Props {
 export default function AppSettingsPage({ onLogout }: Props) {
   const store = useAppStore();
   const [confirmLogout, setConfirmLogout] = useState(false);
+
+  // ── обновление доступа DDoS-Guard ──
+  const ddgAvailable = ddosGuardAvailable();
+  const [ddgBusy, setDdgBusy] = useState(false);
+  const [ddgMsg, setDdgMsg] = useState('');
+
+  const refreshAccess = async () => {
+    setDdgBusy(true);
+    setDdgMsg('');
+    try {
+      const ok = await refreshDdosGuard();
+      if (ok) {
+        setDdgMsg('Готово. Обновляю приложение…');
+        // Перезагружаем веб-часть, чтобы картинки перезапросились со свежей кукой.
+        setTimeout(() => { try { window.location.reload(); } catch { /* ignore */ } }, 700);
+      } else {
+        setDdgMsg('Не удалось подтвердить. Откройте сайт, дождитесь загрузки и попробуйте ещё раз.');
+      }
+    } catch {
+      setDdgMsg('Ошибка. Попробуйте ещё раз.');
+    } finally {
+      setDdgBusy(false);
+    }
+  };
 
   // ── кэш медиа ──
   const cacheAvailable = mediaCacheAvailable();
@@ -102,11 +127,45 @@ export default function AppSettingsPage({ onLogout }: Props) {
     onLogout();
   };
 
+  const selectTheme = (theme: 'purple' | 'green') => {
+    store.setTheme(theme);
+    void store.saveSettings();
+  };
+
   return (
     <div style={p.root}>
       <PageHeader title="Настройки" />
 
       <div style={p.scroll}>
+        <div style={p.card}>
+          <div style={p.cardHeader}><span style={p.cardTitle}>Тема оформления</span></div>
+          <div style={p.cardBody}>
+            <div style={p.themeChoices}>
+              {(['purple', 'green'] as const).map((theme) => {
+                const selected = store.theme === theme;
+                return (
+                  <button
+                    key={theme}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => selectTheme(theme)}
+                    style={{
+                      ...p.themeChoice,
+                      background: selected ? 'var(--accent-soft)' : 'var(--bg3)',
+                      borderColor: selected ? 'var(--border-active)' : 'var(--border)',
+                      boxShadow: selected ? '0 0 12px var(--accent-glow)' : 'none',
+                    }}
+                  >
+                    <span style={{ ...p.themeSwatch, background: theme === 'green' ? '#168b4a' : '#8b5cf6' }} />
+                    {theme === 'green' ? 'Зелёная' : 'Фиолетовая'}
+                  </button>
+                );
+              })}
+            </div>
+            <p style={p.hint}>Тема меняется сразу и сохраняется на этом устройстве.</p>
+          </div>
+        </div>
+
         <div style={p.card}>
           <div style={p.cardHeader}><span style={p.cardTitle}>Уведомления</span></div>
           <div style={p.cardBody}>
@@ -195,6 +254,27 @@ export default function AppSettingsPage({ onLogout }: Props) {
           </div>
         )}
 
+        {ddgAvailable && (
+          <div style={p.card}>
+            <div style={p.cardHeader}><span style={p.cardTitle}>Доступ к remanga (DDoS-Guard)</span></div>
+            <div style={p.cardBody}>
+              <button
+                style={{ ...p.applyBtn, ...(ddgBusy ? p.applyDisabled : {}) }}
+                onClick={refreshAccess}
+                disabled={ddgBusy}
+              >
+                {ddgBusy ? 'Открываю сайт…' : 'Обновить доступ'}
+              </button>
+              {ddgMsg && <p style={p.hint}>{ddgMsg}</p>}
+              <p style={p.hint}>
+                Если картинки перестали грузиться из-за DDoS-Guard — нажмите, откроется remanga.
+                Дождитесь, пока сайт полностью загрузится (пройдёт проверка), и закройте окно.
+                Свежий доступ подтянется автоматически, приложение обновится.
+              </p>
+            </div>
+          </div>
+        )}
+
         <button style={p.logoutBtn} onClick={() => setConfirmLogout(true)}>
           Выйти из аккаунта
         </button>
@@ -247,6 +327,14 @@ const p: Record<string, React.CSSProperties> = {
   cardBody: { padding: '6px 14px 14px' },
   divider: { height: '1px', background: 'var(--border)', margin: '2px 0' },
   hint: { fontFamily: 'var(--font-display)', fontSize: '12px', color: 'var(--text3)', lineHeight: 1.5, marginTop: '10px' },
+  themeChoices: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px', marginTop: '10px' },
+  themeChoice: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', minWidth: 0,
+    padding: '12px 8px', border: '1px solid', borderRadius: 'var(--radius-sm)',
+    color: 'var(--text)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px',
+    cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+  },
+  themeSwatch: { width: '12px', height: '12px', flexShrink: 0, borderRadius: '50%' },
 
   fieldRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 0' },
   fieldLabel: { fontFamily: 'var(--font-display)', fontSize: '15px', color: 'var(--text)' },
@@ -256,7 +344,7 @@ const p: Record<string, React.CSSProperties> = {
     padding: '10px 12px', outline: 'none',
   },
   applyBtn: {
-    width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
+    width: '100%', background: 'var(--accent)', color: 'var(--on-accent)', border: 'none', borderRadius: 'var(--radius-sm)',
     padding: '12px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', cursor: 'pointer',
     marginTop: '4px', WebkitTapHighlightColor: 'transparent',
   },

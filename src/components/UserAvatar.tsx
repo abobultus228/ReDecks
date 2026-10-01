@@ -3,8 +3,8 @@ import { useAppStore } from '../store';
 import { isVideoUrl } from './CardGallery';
 
 /**
- * Квадратная аватарка пользователя. По тапу — меню «Предложить обмен / Закрыть».
- * userId=null → аватарка без меню (автор неизвестен).
+ * Квадратная аватарка пользователя. По тапу — меню: предложить обмен,
+ * посмотреть обмены, написать сообщение. userId=null → аватарка без меню.
  */
 export default function UserAvatar({
   url, userId, size = 40, radius = 10, premium = false, fallbackText, style,
@@ -19,6 +19,7 @@ export default function UserAvatar({
 }) {
   const setExchangeTargetUserId = useAppStore((s) => s.setExchangeTargetUserId);
   const setChatTargetUserId = useAppStore((s) => s.setChatTargetUserId);
+  const setViewExchangesUserId = useAppStore((s) => s.setViewExchangesUserId);
   const [err, setErr] = useState(false);
   const [menu, setMenu] = useState(false);
 
@@ -35,6 +36,11 @@ export default function UserAvatar({
   const offer = () => {
     setMenu(false);
     if (userId != null) setExchangeTargetUserId(userId);
+  };
+
+  const viewExchanges = () => {
+    setMenu(false);
+    if (userId != null) setViewExchangesUserId(userId);
   };
 
   const message = () => {
@@ -67,6 +73,8 @@ export default function UserAvatar({
         <div style={m.backdrop} onClick={() => setMenu(false)}>
           <div style={m.sheet} onClick={(e) => e.stopPropagation()}>
             <button style={m.item} onClick={offer}>Предложить обмен</button>
+            <div style={m.sep} />
+            <button style={m.item} onClick={viewExchanges}>Посмотреть обмены</button>
             <div style={m.sep} />
             <button style={m.item} onClick={message}>Написать сообщение</button>
             <div style={m.sep} />

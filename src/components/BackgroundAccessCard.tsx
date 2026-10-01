@@ -139,7 +139,7 @@ const c: Record<string, React.CSSProperties> = {
   text: { fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--text3)', margin: '0 0 12px', lineHeight: 1.5 },
 
   btnPrimary: {
-    width: '100%', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', color: '#fff',
+    width: '100%', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', color: 'var(--on-accent)',
     background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '12px',
     cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },

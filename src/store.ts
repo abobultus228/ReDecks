@@ -3,6 +3,8 @@ import { Preferences } from '@capacitor/preferences';
 import type { Collection, DeckType, RunConfig, SavedSettings, ManualChoicePayload } from './types';
 
 interface AppState {
+  theme: 'purple' | 'green';
+  setTheme: (theme: 'purple' | 'green') => void;
   // Auth
   token: string;
   userId: string;
@@ -14,6 +16,9 @@ interface AppState {
   // Навигация: открыть обмен с этим пользователем (транзиентно, не персистится)
   exchangeTargetUserId: number | null;
   setExchangeTargetUserId: (id: number | null) => void;
+  /** Открыть обмены конкретного пользователя (вкладка «Пользователя»). */
+  viewExchangesUserId: number | null;
+  setViewExchangesUserId: (id: number | null) => void;
 
   // Навигация: открыть/создать чат с этим пользователем (транзиентно)
   chatTargetUserId: number | null;
@@ -74,6 +79,8 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
+  theme: 'purple',
+  setTheme: (theme) => set({ theme }),
   token: '',
   userId: '',
   isPremium: false,
@@ -83,6 +90,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   exchangeTargetUserId: null,
   setExchangeTargetUserId: (exchangeTargetUserId) => set({ exchangeTargetUserId }),
+  viewExchangesUserId: null,
+  setViewExchangesUserId: (viewExchangesUserId) => set({ viewExchangesUserId }),
 
   chatTargetUserId: null,
   setChatTargetUserId: (chatTargetUserId) => set({ chatTargetUserId }),
@@ -151,6 +160,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       vibrationEnabled: s.vibrationEnabled,
       mutedRoomIds: s.mutedRoomIds,
       onboardingDone: s.onboardingDone,
+      theme: s.theme,
     };
     await Preferences.set({ key: 'settings', value: JSON.stringify(data) });
   },
@@ -175,6 +185,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         vibrationEnabled: data.vibrationEnabled ?? true,
         mutedRoomIds: Array.isArray(data.mutedRoomIds) ? data.mutedRoomIds : [],
         onboardingDone: data.onboardingDone ?? false,
+        theme: data.theme === 'green' ? 'green' : 'purple',
       });
     } catch {
       // ignore

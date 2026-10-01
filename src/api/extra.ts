@@ -32,13 +32,6 @@ export interface TitleContent {
   characters?: RemangaCharacter[];
 }
 
-export interface ViewedChapter {
-  id: number;
-  tome?: number | string;
-  chapter?: number | string;
-  name?: string;
-}
-
 export class ExtraApiError extends Error {
   constructor(message: string) {
     super(message);
@@ -138,64 +131,7 @@ export async function getTitleContent(token: string, slug: string): Promise<Titl
   return content;
 }
 
-// ─── Главы (glavy) ───────────────────────────────────────────────────────────
-
-export async function collectViewedChapters(
-  token: string,
-  branchId: number,
-  onProgress?: (page: number, found: number) => void
-): Promise<ViewedChapter[]> {
-  const viewed: ViewedChapter[] = [];
-  let page = 1;
-
-  while (true) {
-    const params = new URLSearchParams({
-      branch_id: String(branchId),
-      chapter: '',
-      ordering: 'index',
-      page: String(page),
-      user_data: '1',
-    });
-    const data = await get<{ results?: any[]; next?: number | string | null }>(
-      token,
-      `${API_V2}/titles/chapters/?${params}`,
-      `получение глав page=${page}`
-    );
-
-    for (const ch of data?.results ?? []) {
-      if (ch?.viewed === true) {
-        viewed.push({
-          id: ch.id,
-          tome: ch.tome,
-          chapter: ch.chapter,
-          name: ch.name || '',
-        });
-      }
-    }
-
-    onProgress?.(page, viewed.length);
-
-    const next = data?.next;
-    if (!next || !(data?.results?.length)) break;
-    page = typeof next === 'number' ? next : page + 1;
-  }
-
-  return viewed;
-}
-
-export async function markChaptersUnread(token: string, chapterIds: number[]): Promise<void> {
-  if (!chapterIds.length) return;
-  const response = await CapacitorHttp.delete({
-    url: VIEWS_URL,
-    headers: makeHeaders(token, true) as Record<string, string>,
-    data: { chapter_ids: chapterIds },
-  });
-  if (response.status >= 400) {
-    throw new ExtraApiError(`Не удалось сбросить главы: HTTP ${response.status}`);
-  }
-}
-
-// ─── Лимитированные тайтлы: чтение глав ──────────────────────────────────────
+// ─── Чтение глав ──────────────────────────────────────────────────────────────
 
 export interface ChapterRef {
   id: number;
@@ -522,7 +458,7 @@ export async function respondExchange(
 // ─── WebSocket чата ──────────────────────────────────────────────────────────
 
 export const CHAT_WS_URL = (token: string) =>
-  `wss://chat.remanga.org/ws/?token=${encodeURIComponent(token)}`;
+  `wss://api.remanga.org/api/v2/chat/ws/?token=${encodeURIComponent(token)}`;
 
 export interface ChatWsEvent {
   room_id: number;

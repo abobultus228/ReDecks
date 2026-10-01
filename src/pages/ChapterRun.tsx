@@ -1,39 +1,39 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { captureAllCookies } from '../utils/cookies';
-import { getDailyRemaining, addDailyRead, DAILY_MAX } from '../utils/dailyLimit';
+import { CardZoomProvider, isVideoUrl, useCardZoom } from '../components/CardGallery';
+import { resolveMediaUrl } from '../api/extra';
+import { getDailyRemaining, addDailyRead, resetDailyRead, DAILY_MAX } from '../utils/dailyLimit';
 import {
   startChapterRead,
   stopChapterRead,
   getChapterReadState,
-  getNativeCookies,
   testViews,
   type ChapterReadState,
 } from '../utils/chapterRead';
-import type { LimitedTitle } from '../utils/limitedTitles';
 
-type Phase = 'intro' | 'count' | 'run';
+type Phase = 'count' | 'run';
 const MAX_PER_RUN = 800;
 
-export default function LimitedRun({
+export default function ChapterRun({
   title, onBack,
 }: {
-  title: LimitedTitle;
+  title: { branchId: number; name: string };
   onBack: () => void;
 }) {
   const token = useAppStore((s) => s.token);
 
-  const [phase, setPhase] = useState<Phase>('intro');
-  const [cookie, setCookie] = useState('');
-  const [nativeCookie, setNativeCookie] = useState('');
-  const [cookieBusy, setCookieBusy] = useState(false);
+  const [phase, setPhase] = useState<Phase>('count');
   const [error, setError] = useState('');
 
   const [count, setCount] = useState('50');
   const [remaining, setRemaining] = useState(DAILY_MAX);
-  // Режим запроса: true — слать куки (прежнее поведение), false — голый Bearer.
-  const [sendCookies, setSendCookies] = useState(true);
+
+  // Параметры прогона
+  const [delaySec, setDelaySec] = useState(1.0);   // задержка между главами, с (0.3..1)
+  const [like, setLike] = useState(true);          // лайкать ли главы
+  const [ignore502, setIgnore502] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   // Тестовый запрос
   const TEST_CHAPTER = 30125;
@@ -46,7 +46,7 @@ export default function LimitedRun({
     setCopied(false);
     setTestLog('');
     try {
-      const log = await testViews(token, TEST_CHAPTER, sendCookies);
+      const log = await testViews(token, TEST_CHAPTER);
       setTestLog(log || '(пустой ответ)');
     } catch (e) {
       setTestLog('Ошибка: ' + (e instanceof Error ? e.message : String(e)));
@@ -88,14 +88,16 @@ export default function LimitedRun({
   useEffect(() => {
     (async () => {
       const st = await getChapterReadState();
-      if (st?.running) {
+      if (st?.running && st.branchId === title.branchId) {
         setState(st);
         setPhase('run');
         wasRunning.current = true;
         dailyAdded.current = false;
+      } else if (st?.running) {
+        setError('Уже запущено чтение другого тайтла. Сначала останови его.');
       }
     })();
-  }, []);
+  }, [title.branchId]);
 
   // опрос состояния во время прогона
   useEffect(() => {
@@ -121,22 +123,6 @@ export default function LimitedRun({
     return () => { alive = false; clearInterval(id); };
   }, [phase]);
 
-  const getCookies = async () => {
-    setError('');
-    setCookieBusy(true);
-    try {
-      const c = await captureAllCookies();
-      if (!c) throw new Error('Куки пустые');
-      setCookie(c);
-      setNativeCookie(await getNativeCookies());
-      setPhase('count');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setCookieBusy(false);
-    }
-  };
-
   const countN = parseInt(count, 10);
   const maxAllowed = Math.min(MAX_PER_RUN, remaining);
   const validCount = Number.isInteger(countN) && countN >= 1 && countN <= maxAllowed;
@@ -149,11 +135,13 @@ export default function LimitedRun({
       setState(null);
       await startChapterRead({
         token,
-        cookie: sendCookies ? cookie : '',
         branchId: title.branchId,
         target: countN,
-        sendCookies,
+        delayMs: Math.round(delaySec * 1000),
+        like,
+        ignore502,
       });
+      wasRunning.current = true;
       setPhase('run');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -165,17 +153,25 @@ export default function LimitedRun({
     await stopChapterRead();
   };
 
+  const doResetLimit = async () => {
+    setConfirmReset(false);
+    await resetDailyRead();
+    void getDailyRemaining().then(setRemaining);
+  };
+
   // ─── UI ───────────────────────────────────────────────────────────────────
 
   const done = state?.readsDone ?? 0;
   const target = state?.target ?? countN;
   const coins = state?.coins ?? 0;
   const cards = state?.cards ?? 0;
+  const rewardCards = state?.rewardCards ?? [];
   const frac = target > 0 ? Math.max(0, Math.min(1, done / target)) : 0;
   const running = state?.running ?? false;
   const finished = phase === 'run' && !running && wasRunning.current;
 
   return (
+    <CardZoomProvider>
     <div style={s.root}>
       <div style={s.topRow}>
         <button style={s.back} onClick={onBack}>← назад</button>
@@ -183,26 +179,8 @@ export default function LimitedRun({
       </div>
 
       <div style={s.body}>
-        {phase === 'intro' && (
-          <div style={s.card}>
-            <p style={s.text}>
-              Для чтения глав нужны твои свежие куки. Откроется браузер — войди
-              на remanga.org (если ещё не вошёл), и куки заберутся автоматически.
-            </p>
-            {error && <p style={s.error}>{error}</p>}
-            <button
-              style={{ ...s.primary, ...(cookieBusy ? s.disabled : {}) }}
-              onClick={getCookies}
-              disabled={cookieBusy}
-            >
-              {cookieBusy ? 'Открываю браузер…' : 'Получить куки'}
-            </button>
-          </div>
-        )}
-
         {phase === 'count' && (
           <div style={s.card}>
-            <p style={s.ok}>✓ Куки получены</p>
             <label style={s.label}>Сколько глав прочитать</label>
             <input
               style={s.input}
@@ -214,42 +192,47 @@ export default function LimitedRun({
             <p style={s.hint}>
               Максимум за раз: {maxAllowed}. Осталось на сегодня: {remaining} из {DAILY_MAX}.
             </p>
+            <button style={s.resetLink} onClick={() => setConfirmReset(true)}>
+              Сбросить дневной лимит
+            </button>
             {remaining <= 0 && <p style={s.error}>Дневной лимит {DAILY_MAX} исчерпан.</p>}
             {error && <p style={s.error}>{error}</p>}
 
-            <details>
-              <summary style={s.hint}>
-                document.cookie (JS) — {cookie.split(';').filter(Boolean).length} шт.
-              </summary>
-              <div style={s.cookieDump}>{cookie || '(пусто)'}</div>
-            </details>
-            <details>
-              <summary style={s.hint}>
-                CookieManager (уходят в запрос, вкл. HttpOnly) — {nativeCookie.split(';').filter(Boolean).length} шт.
-              </summary>
-              <div style={s.cookieDump}>{nativeCookie || '(пусто)'}</div>
-            </details>
+            <div style={s.divider} />
 
-            <label style={s.label}>Режим запроса</label>
-            <div style={s.seg}>
-              <button
-                style={{ ...s.segBtn, ...(!sendCookies ? s.segOn : {}) }}
-                onClick={() => setSendCookies(false)}
-              >
-                Голый токен
-              </button>
-              <button
-                style={{ ...s.segBtn, ...(sendCookies ? s.segOn : {}) }}
-                onClick={() => setSendCookies(true)}
-              >
-                С куки
-              </button>
+            <div style={s.sliderHead}>
+              <span style={s.label}>Задержка между главами</span>
+              <span style={s.sliderVal}>{delaySec.toFixed(1)} с</span>
             </div>
-            <p style={s.hint}>
-              {sendCookies
-                ? 'В запросы чтения/сброса добавляется Cookie (вкл. HttpOnly).'
-                : 'Куки не отправляются — только Authorization: Bearer.'}
-            </p>
+            <input
+              style={s.slider}
+              type="range"
+              min={0.3}
+              max={1}
+              step={0.1}
+              value={delaySec}
+              onChange={(e) => setDelaySec(parseFloat(e.target.value))}
+            />
+
+            <label style={s.checkRow}>
+              <input
+                style={s.checkbox}
+                type="checkbox"
+                checked={like}
+                onChange={(e) => setLike(e.target.checked)}
+              />
+              <span style={s.checkLabel}>Лайкать главы</span>
+            </label>
+
+            <label style={s.checkRow}>
+              <input
+                style={s.checkbox}
+                type="checkbox"
+                checked={ignore502}
+                onChange={(e) => setIgnore502(e.target.checked)}
+              />
+              <span style={s.checkLabel}>Игнорировать 502 Ошибку</span>
+            </label>
 
             <button
               style={{ ...s.secondary, ...(testBusy ? s.disabled : {}) }}
@@ -307,6 +290,17 @@ export default function LimitedRun({
               </div>
             </div>
 
+            {rewardCards.length > 0 && (
+              <div style={s.rewardsSection}>
+                <div style={s.rewardsTitle}>Выпавшие карты</div>
+                <div style={s.rewardsGrid}>
+                  {rewardCards.map((card, index) => (
+                    <RewardCardCell key={`${index}-${card.mid}`} mid={card.mid} high={card.high} />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {finished && (
               <div style={s.stoppedBox}>
                 <div style={s.stoppedTitle}>Процесс завершён</div>
@@ -336,7 +330,36 @@ export default function LimitedRun({
         onConfirm={doStop}
         onCancel={() => setConfirmStop(false)}
       />
+
+      <ConfirmDialog
+        open={confirmReset}
+        title="Сбросить дневной лимит?"
+        message="Сбрасывать лимит следует только если он не сбросился самостоятельно, вы уверены?"
+        confirmLabel="Сбросить"
+        cancelLabel="Отмена"
+        danger
+        onConfirm={doResetLimit}
+        onCancel={() => setConfirmReset(false)}
+      />
     </div>
+    </CardZoomProvider>
+  );
+}
+
+function RewardCardCell({ mid, high }: { mid: string; high: string }) {
+  const openZoom = useCardZoom();
+  const preview = resolveMediaUrl(mid || high);
+  const full = resolveMediaUrl(high || mid);
+  if (!preview) return null;
+
+  return (
+    <button style={s.rewardCard} onClick={() => openZoom(full)} aria-label="Открыть карту">
+      {isVideoUrl(preview) ? (
+        <video src={preview} style={s.rewardMedia} autoPlay loop muted playsInline />
+      ) : (
+        <img src={preview} style={s.rewardMedia} loading="lazy" alt="Выпавшая карта" />
+      )}
+    </button>
   );
 }
 
@@ -349,14 +372,10 @@ const s: Record<string, React.CSSProperties> = {
   body: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' },
   card: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' },
   text: { fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--text2)', lineHeight: 1.6 },
-  ok: { fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--green)' },
   label: { fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.1em' },
   input: { width: '100%', boxSizing: 'border-box', background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px', fontFamily: 'var(--font-mono)', fontSize: '18px', textAlign: 'center', outline: 'none' },
   hint: { fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text3)' },
 
-  seg: { display: 'flex', gap: '6px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px' },
-  segBtn: { flex: 1, background: 'transparent', color: 'var(--text2)', border: 'none', borderRadius: '6px', padding: '10px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
-  segOn: { background: 'var(--accent)', color: '#fff' },
 
   barLabelRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
   barLabel: { fontFamily: 'var(--font-display)', fontSize: '14px', color: 'var(--text2)' },
@@ -364,24 +383,37 @@ const s: Record<string, React.CSSProperties> = {
   barTrack: { height: '10px', background: 'var(--bg3)', borderRadius: '999px', overflow: 'hidden' },
   barFill: { height: '100%', background: 'var(--accent)', borderRadius: '999px', transition: 'width 0.3s ease' },
 
-  statsRow: { display: 'flex', gap: '10px' },
-  statBox: { flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px', textAlign: 'center' },
-  statNum: { fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '20px', color: 'var(--text)' },
-  statLabel: { fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text3)', marginTop: '2px' },
+  statsRow: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px' },
+  statBox: { minWidth: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 6px', textAlign: 'center' },
+  statNum: { fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'clamp(12px, 4vw, 20px)', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  statLabel: { fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text3)', marginTop: '2px', whiteSpace: 'nowrap' },
+  rewardsSection: { display: 'flex', flexDirection: 'column', gap: '10px' },
+  rewardsTitle: { fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.1em' },
+  rewardsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' },
+  rewardCard: { width: '100%', minWidth: 0, aspectRatio: '2 / 3', padding: 0, overflow: 'hidden', borderRadius: '8px', background: 'var(--bg3)', border: '1px solid var(--border)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
+  rewardMedia: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
 
   stoppedBox: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px', textAlign: 'center' },
   stoppedTitle: { fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px', color: 'var(--text)' },
   stoppedReason: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text3)', marginTop: '6px', lineHeight: 1.4 },
 
-  primary: { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '13px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
+  primary: { background: 'var(--accent)', color: 'var(--on-accent)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '13px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
   secondary: { background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '11px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
   testHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', marginBottom: '6px' },
-  copyBtn: { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '6px 12px', fontFamily: 'var(--font-mono)', fontSize: '11px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
+  copyBtn: { background: 'var(--accent)', color: 'var(--on-accent)', border: 'none', borderRadius: 'var(--radius-sm)', padding: '6px 12px', fontFamily: 'var(--font-mono)', fontSize: '11px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
   testLog: { fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text2)', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '280px', overflowY: 'auto', margin: 0 },
   danger: { width: '100%', background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '13px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
   disabled: { opacity: 0.5, cursor: 'default' },
   error: { fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--red)', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm)', padding: '10px 12px' },
-  cookieDump: { fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text2)', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px', marginTop: '6px', wordBreak: 'break-all', maxHeight: '160px', overflowY: 'auto' },
+
+  resetLink: { alignSelf: 'flex-start', background: 'transparent', border: 'none', padding: '2px 0', color: 'var(--text3)', fontFamily: 'var(--font-mono)', fontSize: '11px', textDecoration: 'underline', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
+  divider: { height: '1px', background: 'var(--border)', margin: '2px 0' },
+  sliderHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  sliderVal: { fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text)' },
+  slider: { width: '100%', accentColor: 'var(--accent)', cursor: 'pointer' },
+  checkRow: { display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' },
+  checkbox: { width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' },
+  checkLabel: { fontFamily: 'var(--font-display)', fontSize: '14px', color: 'var(--text2)' },
 
   footer: { padding: '12px 16px', borderTop: '1px solid var(--border)', flexShrink: 0 },
 };

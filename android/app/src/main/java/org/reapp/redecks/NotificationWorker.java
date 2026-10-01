@@ -52,6 +52,7 @@ public class NotificationWorker extends Worker {
     @Override
     public Result doWork() {
         Context ctx = getApplicationContext();
+        AppUserAgent.init(ctx);
         SharedPreferences prefs = ctx.getSharedPreferences(NotifierPlugin.PREFS, Context.MODE_PRIVATE);
 
         Log.d(TAG, "doWork: старт");
@@ -359,7 +360,7 @@ public class NotificationWorker extends Worker {
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(15000);
             conn.setRequestProperty("Authorization", "Bearer " + token);
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) ReDecks");
+            conn.setRequestProperty("User-Agent", AppUserAgent.get());
             conn.setRequestProperty("Referer", "https://remanga.org/");
             conn.setRequestProperty("Origin", "https://remanga.org");
             conn.setRequestProperty("Accept", "application/json");

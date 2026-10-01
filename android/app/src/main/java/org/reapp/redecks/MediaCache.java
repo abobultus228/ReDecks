@@ -34,9 +34,6 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class MediaCache {
     private static final String TAG = "MediaCache";
     private static final String PREFS = "redecks_media_cache";
-    private static final String UA =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        + "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
     private static volatile boolean enabled = false;
     private static volatile long limitBytes = 500L * 1024 * 1024;
@@ -54,6 +51,7 @@ public final class MediaCache {
         synchronized (initLock) {
             if (dir != null) return;
             appContext = ctx.getApplicationContext();
+            AppUserAgent.init(appContext);
             File base = appContext.getExternalCacheDir();
             if (base == null) base = appContext.getCacheDir();
             dir = new File(base, "media-cache");
@@ -182,7 +180,42 @@ public final class MediaCache {
 
     // ── Скачивание и вытеснение ────────────────────────────────────────────────
 
+    /** До 3 попыток: между ними куки могли обновиться из Set-Cookie предыдущего ответа. */
     private static boolean download(String url, File target) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            if (attemptDownload(url, target)) return true;
+            try {
+                Thread.sleep(250L * attempt);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /** Складывает Set-Cookie из ответа в общий CookieManager для remanga.org (свежие __ddg*). */
+    private static void captureCookies(HttpURLConnection conn) {
+        try {
+            Map<String, java.util.List<String>> headers = conn.getHeaderFields();
+            if (headers == null) return;
+            CookieManager cm = CookieManager.getInstance();
+            boolean any = false;
+            for (Map.Entry<String, java.util.List<String>> e : headers.entrySet()) {
+                String key = e.getKey();
+                if (key == null || !key.equalsIgnoreCase("Set-Cookie")) continue;
+                for (String c : e.getValue()) {
+                    if (c != null && !c.isEmpty()) {
+                        cm.setCookie("https://remanga.org", c);
+                        any = true;
+                    }
+                }
+            }
+            if (any) cm.flush();
+        } catch (Exception ignore) {}
+    }
+
+    private static boolean attemptDownload(String url, File target) {
         HttpURLConnection conn = null;
         File tmp = new File(target.getAbsolutePath() + ".tmp");
         try {
@@ -190,7 +223,7 @@ public final class MediaCache {
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(20000);
             conn.setReadTimeout(30000);
-            conn.setRequestProperty("User-Agent", UA);
+            conn.setRequestProperty("User-Agent", AppUserAgent.get());
             conn.setRequestProperty("Referer", "https://remanga.org/");
             conn.setRequestProperty("Accept", "*/*");
             try {
@@ -199,6 +232,11 @@ public final class MediaCache {
             } catch (Exception ignore) {}
 
             int code = conn.getResponseCode();
+
+            // Свежие __ddg* приходят в Set-Cookie — забираем их в общий CookieManager,
+            // чтобы следующий запрос (в т.ч. повторная попытка) прошёл с валидной кукой.
+            captureCookies(conn);
+
             if (code != 200) return false;
 
             // не кэшируем не-медиа (например, HTML-челлендж DDoS-Guard с кодом 200)

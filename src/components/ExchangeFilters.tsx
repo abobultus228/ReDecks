@@ -359,7 +359,7 @@ const s: Record<string, React.CSSProperties> = {
     color: 'var(--text)', fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 600,
     WebkitTapHighlightColor: 'transparent', textAlign: 'left',
   },
-  rowOn: { background: 'rgba(139,92,246,0.12)' },
+  rowOn: { background: 'var(--accent-soft)' },
   dir: { color: 'var(--accent)', fontWeight: 800 },
 
   // модальная панель фильтров
@@ -382,7 +382,7 @@ const s: Record<string, React.CSSProperties> = {
     color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '12px',
     padding: '7px 12px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },
-  chipOn: { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' },
+  chipOn: { background: 'var(--accent)', color: 'var(--on-accent)', borderColor: 'var(--accent)' },
 
   pillCol: { display: 'flex', flexDirection: 'column', gap: '6px' },
   pill: {
@@ -390,7 +390,7 @@ const s: Record<string, React.CSSProperties> = {
     color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '13px',
     padding: '11px', cursor: 'pointer', textAlign: 'left', WebkitTapHighlightColor: 'transparent',
   },
-  pillOn: { background: 'rgba(139,92,246,0.14)', color: 'var(--text)', borderColor: 'var(--accent)' },
+  pillOn: { background: 'var(--accent-soft-strong)', color: 'var(--text)', borderColor: 'var(--accent)' },
 
   input: {
     width: '100%', boxSizing: 'border-box', background: 'var(--bg3)', border: '1px solid var(--border)',
@@ -422,7 +422,7 @@ const s: Record<string, React.CSSProperties> = {
     color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '12px',
     padding: '10px 6px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },
-  triOn: { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' },
+  triOn: { background: 'var(--accent)', color: 'var(--on-accent)', borderColor: 'var(--accent)' },
 
   sheetFooter: { display: 'flex', gap: '10px', padding: '12px 16px', borderTop: '1px solid var(--border)' },
   resetBtn: {
@@ -430,7 +430,7 @@ const s: Record<string, React.CSSProperties> = {
     color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', padding: '12px', cursor: 'pointer',
   },
   applyBtn: {
-    flex: 2, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
+    flex: 2, background: 'var(--accent)', color: 'var(--on-accent)', border: 'none', borderRadius: 'var(--radius-sm)',
     fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '14px', padding: '12px', cursor: 'pointer',
   },
 };

@@ -51,6 +51,7 @@ public class EventBattleService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        AppUserAgent.init(getApplicationContext());
         // Нажатие кнопки "Остановить" в уведомлении — просто выставляем флаг,
         // рабочий цикл сам увидит его на ближайшей проверке и корректно завершится
         // через finish() (снимет wake-lock, обновит уведомление, остановит сервис).
@@ -142,13 +143,11 @@ public class EventBattleService extends Service {
             conn.setRequestProperty("sec-ch-ua",
                     "\"Google Chrome\";v=\"149\", \"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"");
             conn.setRequestProperty("sec-ch-ua-mobile", "?0");
-            conn.setRequestProperty("sec-ch-ua-platform", "\"Windows\"");
+            conn.setRequestProperty("sec-ch-ua-platform", "\"Android\"");
             conn.setRequestProperty("sec-fetch-dest", "empty");
             conn.setRequestProperty("sec-fetch-mode", "cors");
             conn.setRequestProperty("sec-fetch-site", "same-site");
-            conn.setRequestProperty("user-agent",
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                            "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36");
+            conn.setRequestProperty("user-agent", AppUserAgent.get());
 
             conn.connect();
             int code = conn.getResponseCode();
