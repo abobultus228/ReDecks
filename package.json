@@ -1,6 +1,6 @@
 {
   "name": "redecks",
-  "version": "3.2.6",
+  "version": "3.2.7",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "test:craft-executor": "node --test tests/craftExecutor.test.cjs tests/craftApi.test.cjs",
     "test:repass": "node --test tests/repassLogic.test.cjs tests/repassRun.test.cjs tests/repassApi.test.cjs",
     "test:chapters": "node --test tests/titleBranch.test.cjs",
+    "test:auth": "node --test tests/authSession.test.cjs",
     "preview": "vite preview",
     "android": "npx cap sync android && npx cap open android",
     "ios": "npx cap sync ios && npx cap open ios",

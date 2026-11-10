@@ -4,76 +4,10 @@ import { Preferences } from '@capacitor/preferences';
 import { useAppStore } from '../store';
 import { CapacitorHttp } from '@capacitor/core';
 import ReDecksLogo from '../components/ReDecksLogo';
+import { findAuthSession } from '../utils/authSession';
 
 interface Props {
   onAuth: () => void;
-}
-
-/** Повторно раскодирует строку из URL-кодировки (несколько проходов). */
-function decodeDeep(raw: string): string {
-  let cur = raw;
-  for (let i = 0; i < 3; i++) {
-    let dec: string;
-    try { dec = decodeURIComponent(cur); } catch { break; }
-    if (dec === cur) break;
-    cur = dec;
-  }
-  return cur;
-}
-
-/**
- * Берёт id пользователя из значения cookie/localStorage `user` — это
- * URL-кодированный JSON. Раскодируем и
- * парсим; если JSON битый — достаём id регуляркой.
- */
-function userIdFromValue(value: string): string {
-  const decoded = decodeDeep(value);
-  try {
-    const obj = JSON.parse(decoded);
-    if (obj && obj.id != null) return String(obj.id);
-  } catch {
-    // не JSON — пробуем регуляркой ниже
-  }
-  const m = decoded.match(/"id"\s*:\s*(\d+)/);
-  return m ? m[1] : '';
-}
-
-/** Ищет id пользователя и в cookie, и в localStorage remanga. */
-function findUserId(cookie: string, ls: Record<string, string>): string {
-  // 1. cookie `user`
-  const cm = cookie.match(/(?:^|;\s*)user=([^;]+)/);
-  if (cm) {
-    const id = userIdFromValue(cm[1]);
-    if (id) return id;
-  }
-  // 2. ключи localStorage, похожие на user
-  for (const key of Object.keys(ls)) {
-    if (/user/i.test(key)) {
-      const id = userIdFromValue(ls[key]);
-      if (id) return id;
-    }
-  }
-  // 3. широкий поиск по всему содержимому (и в декодированном, и в кодированном виде)
-  const all = cookie + ' ' + Object.values(ls).join(' ');
-  const decoded = decodeDeep(all).match(/"id"\s*:\s*(\d+)/);
-  if (decoded) return decoded[1];
-  const encoded = all.match(/%22id%22%3A(\d+)/i);
-  return encoded ? encoded[1] : '';
-}
-
-/** Достаёт токен авторизации из cookie, с запасным вариантом из localStorage. */
-function findToken(cookie: string, ls: Record<string, string>): string {
-  const tm = cookie.match(/(?:^|;\s*)token=([^;]+)/);
-  if (tm) {
-    try { return decodeURIComponent(tm[1]); } catch { return tm[1]; }
-  }
-  for (const key of Object.keys(ls)) {
-    if (/^token$|token/i.test(key)) {
-      const v = (ls[key] || '').replace(/^"|"$/g, '');
-      if (v) return v;
-    }
-  }
-  return '';
 }
 
 export default function AuthPage({ onAuth }: Props) {
@@ -129,7 +63,7 @@ const handleBrowserAuth = async () => {
           ls = {}; // не получилось — не страшно, основное берём из cookie
         }
 
-        const token = findToken(cookie, ls);
+        const { token, userId: uid } = findAuthSession(cookie, ls);
         if (!token) return false; // ещё не залогинен
 
         done = true;
@@ -137,7 +71,6 @@ const handleBrowserAuth = async () => {
         setManualToken(token);
 
         // Автоматически подставляем id пользователя
-        const uid = findUserId(cookie, ls);
         if (uid) {
           setUserId(uid);
           setManualUserId(uid);
@@ -170,16 +103,17 @@ const handleBrowserAuth = async () => {
 
   const handleManualSave = async () => {
     const token = manualToken.replace(/^Bearer\s+/i, '').trim();
-    const uid = manualUserId.trim();
+    const enteredId = manualUserId.trim();
 
     if (!token) { setError('Введи токен'); return; }
-    if (!uid || isNaN(Number(uid))) { setError('Введи числовой User ID'); return; }
+    if (enteredId && !/^\d+$/.test(enteredId)) { setError('User ID должен быть числом'); return; }
 
     setLoading(true);
     try {
-      // Быстрая проверка токена — попытка получить коллекции
+      // Публичные коллекции не проверяют токен. Этот запрос требует авторизацию
+      // и возвращает ID пользователя, если cookie auth:user недоступна.
       const res = await CapacitorHttp.get({
-          url: `https://api.remanga.org/api/v2/inventory/${uid}/rare-collections/?count=1&page=1`,
+          url: 'https://api.remanga.org/api/v2/users/current/',
           headers: {
             authorization: `Bearer ${token}`,
             accept: '*/*',
@@ -188,8 +122,22 @@ const handleBrowserAuth = async () => {
           },
         });
 
-        if (res.status === 401 || res.status === 403) {
-        setError('Неверный токен или User ID');
+      if (res.status === 401 || res.status === 403) {
+        setError('Токен недействителен или срок его действия истёк');
+        return;
+      }
+      if (res.status < 200 || res.status >= 300) {
+        setError(`Не удалось проверить токен: HTTP ${res.status}`);
+        return;
+      }
+      const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      const uid = String(data?.content?.id ?? data?.id ?? '');
+      if (!/^\d+$/.test(uid)) {
+        setError('Сервер не вернул ID пользователя');
+        return;
+      }
+      if (enteredId && enteredId !== uid) {
+        setError('Указанный User ID не совпадает с владельцем токена');
         return;
       }
       setToken(token);
@@ -239,7 +187,7 @@ const handleBrowserAuth = async () => {
           </button>
 
           <p style={styles.hint}>
-            Откроется браузер → войди в аккаунт → скопируй токен из cookie «token» на remanga.org
+            Откроется браузер → войди в аккаунт. Токен и ID подтянутся автоматически из cookie сайта.
           </p>
         </div>
       ) : (
@@ -247,7 +195,7 @@ const handleBrowserAuth = async () => {
           <p style={styles.instructions}>
             1. Войди на <b style={{ color: 'var(--accent)' }}>remanga.org</b> в браузере<br/>
             2. Открой DevTools → Application → Cookies<br/>
-            3. Скопируй значение cookie <code style={styles.code}>token</code><br/>
+            3. Скопируй значение cookie <code style={styles.code}>auth:token</code><br/>
             4. Вставь сюда 👇
           </p>
 
@@ -263,7 +211,7 @@ const handleBrowserAuth = async () => {
             spellCheck={false}
           />
 
-          <label style={styles.label}>User ID</label>
+          <label style={styles.label}>User ID (необязательно)</label>
           <input
             style={styles.input}
             type="number"
