@@ -1,29 +1,36 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAppStore } from './store';
 import { setupImmersive } from './utils/immersive';
 import AuthPage from './pages/AuthPage';
-import SettingsPage from './pages/SettingsPage';
-import ProcessPage from './pages/ProcessPage';
 import ChaptersPage from './pages/ChaptersPage';
 import CardsPage from './pages/CardsPage';
+import CraftPage from './pages/CraftPage';
 import ChatPage from './pages/ChatPage';
 import EventPage from './pages/EventPage';
 import AppSettingsPage from './pages/AppSettingsPage';
 import ExchangesPage from './pages/ExchangesPage';
 import ForumPage from './pages/ForumPage';
+import RepassPage from './pages/RepassPage';
 import OnboardingPage from './pages/OnboardingPage';
 import { syncNotifier, seedExchangeBaseline } from './utils/notifier';
 import { App as CapacitorApp } from '@capacitor/app';
 import NavBar, { type Tab } from './components/NavBar';
+import { NavigationMenuContext } from './components/NavigationMenuContext';
 
 export default function App() {
   const { token, userId, theme, loadSettings, onboardingDone, exchangeTargetUserId, viewExchangesUserId, chatTargetUserId } = useAppStore();
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
 
-  const [tab, setTab] = useState<Tab>('decks');
-  const [decksView, setDecksView] = useState<'settings' | 'process'>('settings');
+  const [tab, setTab] = useState<Tab>('chat');
   const [chatInRoom, setChatInRoom] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const openMenu = useCallback(() => setMenuOpen(true), []);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const selectTab = useCallback((nextTab: Tab) => {
+    setTab(nextTab);
+    setMenuOpen(false);
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -46,18 +53,18 @@ export default function App() {
 
   // Открыть обмен с пользователем (тап по аватарке на форуме) — переключаем вкладку.
   useEffect(() => {
-    if (exchangeTargetUserId != null) setTab('exchanges');
-  }, [exchangeTargetUserId]);
+    if (exchangeTargetUserId != null) selectTab('exchanges');
+  }, [exchangeTargetUserId, selectTab]);
 
   // Посмотреть обмены пользователя (тап по аватарке) — переключаем на обмены.
   useEffect(() => {
-    if (viewExchangesUserId != null) setTab('exchanges');
-  }, [viewExchangesUserId]);
+    if (viewExchangesUserId != null) selectTab('exchanges');
+  }, [viewExchangesUserId, selectTab]);
 
   // Написать сообщение пользователю — переключаем на чат.
   useEffect(() => {
-    if (chatTargetUserId != null) setTab('chat');
-  }, [chatTargetUserId]);
+    if (chatTargetUserId != null) selectTab('chat');
+  }, [chatTargetUserId, selectTab]);
 
   // Запускаем/обновляем фоновый уведомитель, когда вошли,
   // и обновляем базовую линию обменов при входе и при возврате в приложение.
@@ -85,7 +92,7 @@ export default function App() {
   }
 
   if (!authed) {
-    return <AuthPage onAuth={() => { setAuthed(true); setTab('decks'); setDecksView('settings'); }} />;
+    return <AuthPage onAuth={() => { setAuthed(true); selectTab('chat'); }} />;
   }
 
   // Начальная настройка уведомлений — один раз после входа
@@ -93,26 +100,24 @@ export default function App() {
     return <OnboardingPage onDone={() => { /* флаг уже сохранён в сторе */ }} />;
   }
 
-  // Процесс открытия — на весь экран, без нижней навигации
-  if (tab === 'decks' && decksView === 'process') {
-    return <ProcessPage onBack={() => setDecksView('settings')} />;
-  }
+  const showNavigation = !(tab === 'chat' && chatInRoom);
 
   return (
     <div style={shell.root}>
-      <div style={shell.content}>
-        {tab === 'chat' && <ChatPage onInRoomChange={setChatInRoom} />}
-        {tab === 'decks' && (
-          <SettingsPage onStart={() => setDecksView('process')} />
-        )}
-        {tab === 'chapters' && <ChaptersPage />}
-        {tab === 'event' && <EventPage />}
-        {tab === 'cards' && <CardsPage />}
-        {tab === 'exchanges' && <ExchangesPage />}
-        {tab === 'forum' && <ForumPage />}
-        {tab === 'settings' && <AppSettingsPage onLogout={() => { setAuthed(false); }} />}
-      </div>
-      {!(tab === 'chat' && chatInRoom) && <NavBar active={tab} onChange={setTab} />}
+      <NavigationMenuContext.Provider value={showNavigation ? openMenu : null}>
+        <div style={shell.content}>
+          {tab === 'chat' && <ChatPage onInRoomChange={setChatInRoom} />}
+          {tab === 'chapters' && <ChaptersPage />}
+          {tab === 'event' && <EventPage />}
+          {tab === 'cards' && <CardsPage />}
+          {tab === 'craft' && <CraftPage />}
+          {tab === 'exchanges' && <ExchangesPage />}
+          {tab === 'forum' && <ForumPage />}
+          {tab === 'repass' && <RepassPage />}
+          {tab === 'settings' && <AppSettingsPage onLogout={() => { setAuthed(false); closeMenu(); }} />}
+        </div>
+      </NavigationMenuContext.Provider>
+      {showNavigation && <NavBar active={tab} onChange={selectTab} menuOpen={menuOpen} onMenuClose={closeMenu} />}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAppStore } from '../store';
 import TitlePicker from '../components/TitlePicker';
 import { getTitleContent } from '../api/extra';
+import { resolveTitleBranchId } from '../utils/titleBranch';
 import ChapterRun from './ChapterRun';
 
 interface ReadTitle {
@@ -20,9 +21,9 @@ export default function RegularTitlesTab() {
     setError('');
     try {
       const content = await getTitleContent(token, slug);
-      const branchId = Number(content.active_branch);
-      if (!Number.isInteger(branchId) || branchId <= 0) {
-        throw new Error('У тайтла не найдена активная ветка глав.');
+      const branchId = resolveTitleBranchId(content);
+      if (branchId === null) {
+        throw new Error('У тайтла не найдена ветка с главами.');
       }
       setSelected({ branchId, name: label });
     } catch (e) {

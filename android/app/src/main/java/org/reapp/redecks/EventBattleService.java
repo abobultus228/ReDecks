@@ -88,6 +88,11 @@ public class EventBattleService extends Service {
         Random rnd = new Random();
         try {
             while (!EventBattlePlugin.stopRequested) {
+                if (EventBattlePlugin.battlesDone >= 150 ||
+                        (total > 0 && EventBattlePlugin.battlesDone >= total)) {
+                    finish("Готово: выполнено " + EventBattlePlugin.battlesDone);
+                    return;
+                }
                 String outcome = doMatch(token);
 
                 if (!"won".equals(outcome) && !"lost".equals(outcome)) {
@@ -100,7 +105,8 @@ public class EventBattleService extends Service {
                 if ("won".equals(outcome)) EventBattlePlugin.wins++;
                 updateNotification();
 
-                if (total > 0 && EventBattlePlugin.battlesDone >= total) {
+                if (EventBattlePlugin.battlesDone >= 150 ||
+                        (total > 0 && EventBattlePlugin.battlesDone >= total)) {
                     finish("Готово: выполнено " + EventBattlePlugin.battlesDone);
                     return;
                 }

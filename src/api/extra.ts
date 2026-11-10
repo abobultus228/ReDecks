@@ -29,6 +29,7 @@ export interface RemangaCharacter {
 export interface TitleContent {
   id: number;
   active_branch?: number;
+  branches?: Array<{ id?: number; count_chapters?: number }> | null;
   characters?: RemangaCharacter[];
 }
 
@@ -197,6 +198,16 @@ export async function readChapter(
     try { json = JSON.parse(response.data); } catch { json = response.data; }
   }
   return { status: response.status, json };
+}
+
+/** Возвращает главу в состояние «не прочитана» (тот же DELETE, что в Android-сервисе чтения). */
+export async function markChapterUnread(token: string, chapterId: number): Promise<void> {
+  const response = await CapacitorHttp.delete({
+    url: VIEWS_URL,
+    headers: makeHeaders(token, true) as Record<string, string>,
+    data: { chapter_ids: [chapterId] },
+  });
+  if (response.status >= 400) throw new ExtraApiError(`Не удалось снять отметку главы ${chapterId}: HTTP ${response.status}`);
 }
 
 // ─── Персонажи и карты (spisok) ──────────────────────────────────────────────
@@ -600,14 +611,65 @@ export interface InventoryCard {
   cover?: { mid?: string | null; high?: string | null } | null;
   rank?: string;
   score?: number;
-  title?: { main_name?: string };
+  title?: { id?: number; main_name?: string };
   character?: { name?: string };
 }
 
 export interface InventoryGroup {
   card: InventoryCard;
   stack_count?: number;
+  is_favorite?: boolean;
   cards: InventoryInstance[]; // физические копии карты (у каждой уникальный id)
+}
+
+export interface CraftInventoryGroup {
+  cardId: number;
+  rank: string;
+  instanceIds: number[];
+}
+
+/** Физические экземпляры для крафта — именно cards[].id, не общий card.id. */
+export async function getCraftInventory(token: string, userId: number | string, titleId: number): Promise<CraftInventoryGroup[]> {
+  const groups = new Map<number, CraftInventoryGroup>();
+  const seenInstances = new Set<number>();
+  for (let page = 1; ; page++) {
+    const params = new URLSearchParams({
+      ordering: 'rank', is_favorite: 'false', is_exchangeable: 'true', is_awakened: 'false',
+      card__title_id__in: String(titleId), count: '20', group_by: 'card_id', page: String(page),
+    });
+    for (const rank of ['rank_a', 'rank_s', 'rank_re', 'rank_ev']) params.append('exclude_rank__in', rank);
+    const data = await get<{ results?: InventoryGroup[]; next?: string | null }>(
+      token, `${API_V3}/inventory/items/cards/${userId}/?${params}`, `инвентарь для крафта page=${page}`
+    );
+    if (!Array.isArray(data?.results)) throw new ExtraApiError('Неверный ответ инвентаря для крафта.');
+    for (const item of data.results) {
+      const cardId = Number(item?.card?.id);
+      if (!Number.isInteger(cardId) || !Array.isArray(item.cards)) throw new ExtraApiError('В инвентаре нет ID карты или её экземпляров.');
+      const itemTitleId = Number((item.card?.title as { id?: number } | undefined)?.id);
+      if (Number.isInteger(itemTitleId) && itemTitleId !== titleId) throw new ExtraApiError('Инвентарь вернул карту другого тайтла.');
+      if (item.is_favorite === true) continue;
+      const group = groups.get(cardId) ?? { cardId, rank: item.card.rank ?? '', instanceIds: [] };
+      for (const instance of item.cards) {
+        const id = Number(instance?.id);
+        if (!Number.isInteger(id) || seenInstances.has(id) || instance.is_awakened || instance.is_broken || (instance.enhancement ?? 0) > 0) continue;
+        seenInstances.add(id);
+        group.instanceIds.push(id);
+      }
+      groups.set(cardId, group);
+    }
+    if (!data.next || !data.results.length) break;
+  }
+  return [...groups.values()];
+}
+
+/** Один необратимый крафт. Ошибку POST нельзя автоматически повторять: результат мог уже создаться. */
+export async function mergeCraftCards(token: string, userId: number | string, instanceIds: [number, number]): Promise<TitleCard & { title?: { id?: number } }> {
+  const response = await CapacitorHttp.post({
+    url: `${API_BASE}/inventory/${userId}/cards/merge/`,
+    headers: { ...(makeHeaders(token, true) as Record<string, string>), 'x-client-name': 'web' },
+    data: { cards: instanceIds, type: 1 },
+  });
+  return parse<TitleCard & { title?: { id?: number } }>(response, 'крафт карт');
 }
 
 export interface InventoryPage {
@@ -858,4 +920,24 @@ export async function getTitleCards(token: string, titleId: number, page: number
   );
   const results = data?.results ?? [];
   return { results, hasMore: Boolean(data?.next) && results.length > 0 };
+}
+
+/** Количество экземпляров запрошенных карт у пользователя. Отсутствующие ID имеют 0. */
+export async function getCardStackCounts(token: string, cardIds: number[]): Promise<Map<number, number>> {
+  if (!cardIds.length) return new Map();
+  const params = new URLSearchParams();
+  for (const id of cardIds) params.append('card_id', String(id));
+  const data = await get<Array<{ card_id: number; stack_count: number }>>(
+    token,
+    `${API_V2}/inventory/cards/has_cards/?${params}`,
+    'проверка количества карт'
+  );
+  if (!Array.isArray(data)) throw new ExtraApiError('Неверный ответ при проверке количества карт.');
+  const counts = new Map<number, number>();
+  for (const item of data) {
+    const id = Number(item.card_id);
+    const count = Number(item.stack_count);
+    if (Number.isFinite(id) && Number.isFinite(count) && count > 0) counts.set(id, Math.floor(count));
+  }
+  return counts;
 }

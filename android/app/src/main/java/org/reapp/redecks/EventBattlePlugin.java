@@ -22,7 +22,7 @@ public class EventBattlePlugin extends Plugin {
     public static volatile boolean stopRequested = false;
     public static volatile int battlesDone = 0;
     public static volatile int wins = 0;
-    public static volatile int total = 0; // 0 = бесконечно
+    public static volatile int total = 0;
     public static volatile long nextBattleAtMs = 0;
     public static volatile long waitMs = 0;
     public static volatile String stoppedReason = "";
@@ -41,6 +41,10 @@ public class EventBattlePlugin extends Plugin {
 
         if (token == null || token.isEmpty()) {
             call.reject("Нет токена");
+            return;
+        }
+        if (reps < 1 || reps > 150) {
+            call.reject("Количество дуэлей должно быть от 1 до 150");
             return;
         }
 

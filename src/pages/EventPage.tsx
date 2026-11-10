@@ -11,6 +11,7 @@ import {
 
 const DELAY_MIN = 40;
 const DEVIATION_MAX = 10;
+const BATTLE_MAX = 150;
 
 type Phase = 'setup' | 'running' | 'stopped';
 
@@ -21,7 +22,7 @@ export default function EventPage() {
   const [state, setState] = useState<EventBattleState | null>(null);
   const [now, setNow] = useState(Date.now());
 
-  const [reps, setReps] = useState('0');
+  const [reps, setReps] = useState('150');
   const [delay, setDelay] = useState('45');
   const [deviation, setDeviation] = useState('5');
   const [startError, setStartError] = useState('');
@@ -71,7 +72,7 @@ export default function EventPage() {
   const delayN = parseInt(delay, 10);
   const deviationN = parseInt(deviation, 10);
 
-  const validReps = Number.isInteger(repsN) && repsN >= 0;
+  const validReps = /^\d+$/.test(reps.trim()) && Number.isInteger(repsN) && repsN >= 1 && repsN <= BATTLE_MAX;
   const validDelay = Number.isInteger(delayN) && delayN >= DELAY_MIN;
   const validDeviation = Number.isInteger(deviationN) && deviationN >= 0 && deviationN <= DEVIATION_MAX;
   const canStart = validReps && validDelay && validDeviation;
@@ -107,7 +108,7 @@ export default function EventPage() {
         <PageHeader title="Ивент" sub="авто-дуэли" />
         <div style={p.scroll}>
           <div style={p.card}>
-            <NumberField label="Сколько повторений" hint="0 — бесконечно" value={reps} onChange={setReps} invalid={!validReps} />
+            <NumberField label="Сколько повторений" hint={`от 1 до ${BATTLE_MAX}`} value={reps} onChange={setReps} invalid={!validReps} />
             <div style={p.divider} />
             <NumberField label="Задержка, сек" hint={`минимум ${DELAY_MIN}`} value={delay} onChange={setDelay} invalid={!validDelay} />
             <div style={p.divider} />

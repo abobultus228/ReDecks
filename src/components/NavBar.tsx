@@ -1,16 +1,29 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
 
-export type Tab = 'chat' | 'chapters' | 'decks' | 'event' | 'cards' | 'exchanges' | 'forum' | 'settings';
+export type Tab = 'chat' | 'chapters' | 'event' | 'cards' | 'craft' | 'exchanges' | 'forum' | 'repass' | 'settings';
 
 interface Props {
   active: Tab;
   onChange: (tab: Tab) => void;
+  menuOpen: boolean;
+  onMenuClose: () => void;
 }
 
-const ROW = 56;  // высота ряда плиток
-const GAP = 8;   // расстояние между плитками
+const PRIMARY: { tab: Tab; label: string }[] = [
+  { tab: 'chat', label: 'Чат' },
+  { tab: 'chapters', label: 'Главы' },
+  { tab: 'exchanges', label: 'Обмены' },
+];
 
-const HIDDEN: Tab[] = ['decks', 'event', 'cards', 'exchanges', 'forum', 'settings']; // что прячется под «Ещё»
+const MENU: { tab: Tab; label: string }[] = [
+  { tab: 'cards', label: 'Карты' },
+  { tab: 'craft', label: 'Крафт' },
+  { tab: 'forum', label: 'Форум' },
+  { tab: 'event', label: 'Ивент' },
+  { tab: 'repass', label: 'Re:pass' },
+  { tab: 'settings', label: 'Настройки' },
+];
 
 // ─── Иконки ──────────────────────────────────────────────────────────────────
 
@@ -26,15 +39,16 @@ const icons: Record<string, React.ReactNode> = {
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
     </svg>
   ),
-  decks: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="5" width="11" height="15" rx="2" />
-      <path d="M9 5l3-2 7 3-1 12-3 1" />
-    </svg>
-  ),
   event: (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2l2.9 6 6.6.6-5 4.3 1.5 6.5L12 16l-6 3.4 1.5-6.5-5-4.3 6.6-.6z" />
+    </svg>
+  ),
+  repass: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="9" r="5" />
+      <path d="m8.2 13-2 8 5.8-3 5.8 3-2-8" />
+      <path d="m12 6.7.7 1.4 1.5.2-1.1 1.1.3 1.5-1.4-.7-1.4.7.3-1.5-1.1-1.1 1.5-.2z" strokeWidth="1.2" />
     </svg>
   ),
   cards: (
@@ -43,11 +57,9 @@ const icons: Record<string, React.ReactNode> = {
       <path d="M4 21c0-3.3 3.6-6 8-6s8 2.7 8 6" />
     </svg>
   ),
-  more: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="4" y1="7" x2="20" y2="7" />
-      <line x1="4" y1="12" x2="20" y2="12" />
-      <line x1="4" y1="17" x2="20" y2="17" />
+  craft: (
+    <svg width="22" height="22" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 18h37v7c-5 5-11 8-18 8H9l-4-8zM42 18h17c-1 7-7 11-17 11M25 33v10h14V33M19 43h26l4 9H15z" />
     </svg>
   ),
   close: (
@@ -78,66 +90,69 @@ const icons: Record<string, React.ReactNode> = {
   ),
 };
 
-function Tile({
-  iconKey, label, on, onClick, span = 1,
-}: { iconKey: string; label: string; on: boolean; onClick: () => void; span?: number }) {
-  return (
-    <button
-      style={{ ...s.tile, gridColumn: span > 1 ? `span ${span}` : undefined, ...(on ? s.tileOn : {}) }}
-      onClick={onClick}
-    >
-      {icons[iconKey]}
-      <span style={s.label}>{label}</span>
-    </button>
-  );
-}
+export default function NavBar({ active, onChange, menuOpen, onMenuClose }: Props) {
+  useEffect(() => {
+    if (!menuOpen) return;
 
-export default function NavBar({ active, onChange }: Props) {
-  const [expanded, setExpanded] = useState(false);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onMenuClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    const backButton = CapacitorApp.addListener('backButton', onMenuClose);
 
-  const pick = (t: Tab) => {
-    onChange(t);
-    setExpanded(false);
-  };
-
-  // Когда свёрнуто, а активен скрытый раздел — подсвечиваем «Ещё»
-  const moreActive = !expanded && HIDDEN.includes(active);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      void backButton.then((handler) => handler.remove());
+    };
+  }, [menuOpen, onMenuClose]);
 
   return (
     <>
-      {expanded && <div style={s.backdrop} onClick={() => setExpanded(false)} />}
+      {menuOpen && (
+        <>
+          <div style={s.backdrop} onClick={onMenuClose} aria-hidden="true" />
+          <div id="redecks-navigation-drawer" role="dialog" aria-modal="true" aria-label="Меню разделов" style={s.drawer}>
+            <div style={s.drawerHeader}>
+              <span style={s.drawerTitle}>Разделы</span>
+              <button type="button" style={s.closeButton} onClick={onMenuClose} aria-label="Закрыть меню">
+                {icons.close}
+              </button>
+            </div>
+            <div style={s.menuList}>
+              {MENU.map(({ tab, label }) => (
+                <button
+                  key={tab}
+                  type="button"
+                  style={{ ...s.menuItem, ...(active === tab ? s.menuItemOn : {}), ...(tab === 'settings' ? s.settingsItem : {}) }}
+                  onClick={() => onChange(tab)}
+                  aria-current={active === tab ? 'page' : undefined}
+                >
+                  {icons[tab]}
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
-      {/* резервируем место под свёрнутую плашку, чтобы контент не перекрывался */}
       <div style={s.spacer} />
-
-      <div style={{ ...s.panel, transform: `translateY(${expanded ? 0 : (ROW + GAP) * 2}px)` }}>
-        {/* верхний ряд — всегда видимая плашка */}
+      <nav style={s.panel} aria-label="Основные разделы">
         <div style={s.row}>
-          <Tile iconKey="chat" label="Чат" on={active === 'chat'} onClick={() => pick('chat')} />
-          <Tile iconKey="chapters" label="Главы" on={active === 'chapters'} onClick={() => pick('chapters')} />
-          <button
-            style={{ ...s.tile, ...(moreActive ? s.tileOn : {}) }}
-            onClick={() => setExpanded((e) => !e)}
-          >
-            {expanded ? icons.close : icons.more}
-            <span style={s.label}>{expanded ? 'Закрыть' : 'Ещё'}</span>
-          </button>
+          {PRIMARY.map(({ tab, label }) => (
+            <button
+              key={tab}
+              type="button"
+              style={{ ...s.tile, ...(active === tab ? s.tileOn : {}) }}
+              onClick={() => onChange(tab)}
+              aria-current={active === tab ? 'page' : undefined}
+            >
+              {icons[tab]}
+              <span style={s.label}>{label}</span>
+            </button>
+          ))}
         </div>
-
-        {/* второй ряд — выезжает из-под экрана */}
-        <div style={s.row}>
-          <Tile iconKey="decks" label="Колоды" on={active === 'decks'} onClick={() => pick('decks')} />
-          <Tile iconKey="event" label="Ивент" on={active === 'event'} onClick={() => pick('event')} />
-          <Tile iconKey="cards" label="Персонажи" on={active === 'cards'} onClick={() => pick('cards')} />
-        </div>
-
-        {/* третий ряд — «Настройки», «Форум» и «Обмены» */}
-        <div style={s.row}>
-          <Tile iconKey="settings" label="Настройки" on={active === 'settings'} onClick={() => pick('settings')} />
-          <Tile iconKey="forum" label="Форум" on={active === 'forum'} onClick={() => pick('forum')} />
-          <Tile iconKey="exchanges" label="Обмены" on={active === 'exchanges'} onClick={() => pick('exchanges')} />
-        </div>
-      </div>
+      </nav>
     </>
   );
 }
@@ -147,10 +162,10 @@ const s: Record<string, React.CSSProperties> = {
     position: 'fixed',
     inset: 0,
     background: 'rgba(0,0,0,0.55)',
-    zIndex: 40,
+    zIndex: 60,
   },
   spacer: {
-    height: ROW + GAP * 2, // высота свёрнутой плашки (ряд + внешние отступы)
+    height: 'calc(73px + env(safe-area-inset-bottom, 0px))',
     flexShrink: 0,
   },
   panel: {
@@ -159,20 +174,15 @@ const s: Record<string, React.CSSProperties> = {
     right: 0,
     bottom: 0,
     zIndex: 50,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: `${GAP}px`,
-    padding: `${GAP}px`,
+    padding: '8px 8px calc(8px + env(safe-area-inset-bottom, 0px))',
     background: 'var(--bg2)',
     borderTop: '1px solid var(--border)',
-    transition: 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
-    willChange: 'transform',
   },
   row: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: `${GAP}px`,
-    height: `${ROW}px`,
+    gap: '8px',
+    height: '56px',
   },
   tile: {
     display: 'flex',
@@ -198,5 +208,80 @@ const s: Record<string, React.CSSProperties> = {
     fontFamily: 'var(--font-mono)',
     fontSize: '10px',
     letterSpacing: '0.03em',
+  },
+  drawer: {
+    position: 'fixed',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: 'min(82vw, 320px)',
+    zIndex: 61,
+    display: 'flex',
+    flexDirection: 'column',
+    background: 'var(--bg2)',
+    borderRight: '1px solid var(--border-active)',
+    boxShadow: '12px 0 36px rgba(0,0,0,0.35)',
+    paddingTop: 'env(safe-area-inset-top, 0px)',
+    paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+  },
+  drawerHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '16px',
+    borderBottom: '1px solid var(--border)',
+  },
+  drawerTitle: {
+    fontFamily: 'var(--font-display)',
+    fontSize: '20px',
+    fontWeight: 800,
+    color: 'var(--text)',
+  },
+  closeButton: {
+    width: '40px',
+    height: '40px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '1px solid var(--border)',
+    borderRadius: '12px',
+    background: 'var(--bg3)',
+    color: 'var(--text2)',
+    cursor: 'pointer',
+  },
+  menuList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    padding: '16px',
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+  },
+  menuItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+    width: '100%',
+    minHeight: '52px',
+    padding: '0 14px',
+    border: '1px solid var(--border)',
+    borderRadius: '12px',
+    background: 'var(--bg3)',
+    color: 'var(--text2)',
+    fontFamily: 'var(--font-display)',
+    fontSize: '15px',
+    fontWeight: 600,
+    textAlign: 'left',
+    cursor: 'pointer',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  menuItemOn: {
+    color: 'var(--accent)',
+    background: 'var(--accent-soft)',
+    borderColor: 'var(--border-active)',
+  },
+  settingsItem: {
+    marginTop: 'auto',
   },
 };

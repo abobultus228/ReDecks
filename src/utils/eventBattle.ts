@@ -10,7 +10,7 @@ export interface EventBattleState {
   running: boolean;
   battlesDone: number;
   wins: number;
-  total: number; // 0 = бесконечно
+  total: number; // не более 150; 0 возможно у старого запущенного сервиса
   nextBattleAtMs: number; // когда запланирована следующая дуэль (epoch ms), 0 если нет
   waitMs: number; // длительность текущей паузы между дуэлями
   stoppedReason: string; // причина остановки (для показа в UI), '' пока идёт
@@ -18,7 +18,7 @@ export interface EventBattleState {
 
 export interface StartOpts {
   token: string;
-  repetitions: number; // 0 = бесконечно
+  repetitions: number; // 1..150
   delaySeconds: number; // ≥ 40
   deviationSeconds: number; // 0..10
 }
@@ -40,6 +40,9 @@ export function eventBattleAvailable(): boolean {
 }
 
 export async function startBattles(opts: StartOpts): Promise<void> {
+  if (!Number.isInteger(opts.repetitions) || opts.repetitions < 1 || opts.repetitions > 150) {
+    throw new Error('Количество дуэлей должно быть от 1 до 150.');
+  }
   if (!available()) throw new Error('Фоновый режим недоступен на этой платформе.');
   await Native.start(opts);
 }

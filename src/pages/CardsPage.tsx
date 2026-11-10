@@ -17,7 +17,7 @@ export default function CardsPage() {
   const [tab, setTab] = useState<'chars' | 'title'>('chars');
   return (
     <div style={w.root}>
-      <PageHeader title="Персонажи" sub="карты по персонажам и тайтлам" />
+      <PageHeader title="Карты" sub="персонажи и тайтлы" />
       <div style={w.tabs}>
         <button style={{ ...w.tab, ...(tab === 'chars' ? w.tabOn : {}) }} onClick={() => setTab('chars')}>
           Персонажи
@@ -35,11 +35,12 @@ export default function CardsPage() {
 
 const w: Record<string, React.CSSProperties> = {
   root: { height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', overflow: 'hidden' },
-  tabs: { display: 'flex', gap: '6px', padding: '10px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 },
+  tabs: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px', padding: '6px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 },
   tab: {
-    flex: 1, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-    color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '13px',
-    padding: '10px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+    minWidth: 0, minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+    color: 'var(--text2)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '12px', lineHeight: 1.15,
+    padding: '6px 8px', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
   },
   tabOn: { background: 'var(--accent)', color: 'var(--on-accent)', borderColor: 'var(--accent)' },
   body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
